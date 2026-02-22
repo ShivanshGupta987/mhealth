@@ -1,0 +1,7 @@
+# Placeholder for model files
+# Place your trained model files in this directory:
+# - best_model.pt (PyTorch sentiment model)
+# - emotion_model.joblib (sklearn emotion model - auto-generated)
+
+# Model files are excluded from git due to size
+# Use Git LFS or external storage (S3, GCS) for model versioning

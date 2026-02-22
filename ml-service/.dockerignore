@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.egg-info/
+
+# Virtual environments
+venv/
+env/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+
+# Git
+.git/
+.gitignore
+
+# Model files (bind mount instead - too large for image)
+model_store/*.pth
+model_store/*.pt
+
+# Testing
+.pytest_cache/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Scripts (keep only necessary ones)
+*.ps1
+
+# Temporary files
+*.tmp
+.cache/

@@ -1,0 +1,11 @@
+.env
+.env.example
+.env.email.example
+env
+.venv
+__pycache__/
+*.pyc
+.pytest_cache/
+model_store/
+*.pth
+*.pt

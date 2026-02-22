@@ -1,0 +1,43 @@
+version: '3.8'
+
+# Standalone ML Service Deployment
+# This can be used to run just the ML service independently
+
+services:
+  ml-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mhealth-ml-service
+    ports:
+      - "8001:8001"
+    volumes:
+      # Mount model files from local directory
+      - ./model_store:/app/model_store
+    environment:
+      - ML_SERVICE_HOST=0.0.0.0
+      - ML_SERVICE_PORT=8001
+      - SENTIMENT_MODEL_PATH=/app/model_store/best_model.pt
+      - TARGET_SAMPLE_RATE=16000
+      - MAX_AUDIO_DURATION=5.27
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s  # Give time for model loading
+    restart: unless-stopped
+    # Uncomment for GPU support
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+# Networks (optional, for connecting to other services)
+networks:
+  default:
+    name: mhealth-network
+    external: true  # Set to false if not connecting to backend
