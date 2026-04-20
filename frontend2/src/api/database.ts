@@ -71,6 +71,7 @@ const CallRecordSchema = z
     Status: z.string().nullable().optional(),
     Duration: z.number().nullable().optional(),
     Recording_Url: z.string().nullable().optional(),
+    Analysis_Score: z.number().nullable().optional(),
   })
   .passthrough();
 

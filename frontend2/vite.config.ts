@@ -10,4 +10,13 @@ export default defineConfig({
       },
     }),
   ],
+  server: {
+    proxy: {
+      '/api': 'http://localhost:8000',
+      '/twilio/': {
+        target: 'http://localhost:8002',
+        rewrite: (path) => path.replace(/^\/twilio\//, '/'),
+      },
+    },
+  },
 })

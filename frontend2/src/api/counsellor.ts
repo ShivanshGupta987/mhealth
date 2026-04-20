@@ -19,6 +19,8 @@ const CallHistorySchema = z.object({
   Started_Time: z.string().nullable().optional(),
   Status: z.string().nullable().optional(),
   Emotion: z.string().nullable().optional(),
+  Emotion_Id: z.string().nullable().optional(),
+  Analysis_Score: z.number().nullable().optional(),
   Duration: z.number().nullable().optional(),
   Attempts: z.number().nullable().optional(),
   Recording_Url: z.string().nullable().optional(),
@@ -78,6 +80,7 @@ const FlaggedCounsellorTargetSchema = z
     Department_Name: z.string().nullable().optional(),
     Program: z.string().nullable().optional(),
     Call_Scheduled_DateTime: z.string().nullable().optional(),
+    Analysis_Score: z.number().nullable().optional(),
   })
   .passthrough();
 
@@ -89,6 +92,7 @@ const PotentialCaseExportRowSchema = z
     Department_Name: z.string().nullable().optional(),
     Program: z.string().nullable().optional(),
     Call_Made_DateTime: z.string().nullable().optional(),
+    Analysis_Score: z.number().nullable().optional(),
   })
   .passthrough();
 

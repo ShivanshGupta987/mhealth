@@ -21,10 +21,10 @@ import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 const navigationCards = [
   {
     id: 1,
-    title: 'Call Management',
-    description: 'Schedule calls to call recipients, view call history, analyze recordings, and track depressed recipients',
+    title: 'Twilio Call Management',
+    description: 'Manage Twilio call campaigns, track call outcomes, and review response details.',
     icon: <PhoneInTalkIcon sx={{ fontSize: 60 }} />,
-    path: '/entry-dashboard',
+    path: '/twilio-call-management',
     color: '#1e40af',
     gradient: '#1e40af',
   },
@@ -33,7 +33,7 @@ const navigationCards = [
     title: 'Call Status Dashboard',
     description: 'Dashboard for call metrics',
     icon: <BarChartIcon sx={{ fontSize: 60 }} />,
-    path: '/metrics',
+    path: '/call-status-dashboard',
     color: '#0891b2',
     gradient: '#0891b2',
   },
@@ -42,7 +42,7 @@ const navigationCards = [
     title: 'Admin Dashboard',
     description: 'Dashboard for system health monitoring',
     icon: <MonitorHeartIcon sx={{ fontSize: 60 }} />,
-    path: '/system-health',
+    path: '/admin-dashboard',
     color: '#1e3a8a',
     gradient: '#1e3a8a',
   },
@@ -195,7 +195,7 @@ export default function AboutPage() {
                     }}
                     fullWidth
                   >
-                    {card.title === 'Call Management' ? 'Open' : 'Open Dashboard'}
+                    Open Dashboard
                   </Button>
                 </CardContent>
               </Card>

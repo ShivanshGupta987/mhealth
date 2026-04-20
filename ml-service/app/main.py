@@ -1,22 +1,12 @@
-"""
-ML Service - Standalone FastAPI application for machine learning inference.
-
-This service provides endpoints for:
-- VAD-based sentiment analysis from audio
-- Legacy emotion classification from audio features
-- Health checks and service status
-"""
+"""ML Service - FastAPI application for depression risk inference."""
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import logging
 from typing import Dict, List, Optional
-import numpy as np
 
-from app.services.vad_sentiment import get_service as get_vad_service
-from app.services.emotion_model import get_emotion_service
-from app.services.audio_utils import extract_features_from_bytes
-from app.config import ML_SERVICE_HOST, ML_SERVICE_PORT
+from app.services.depression_prediction import get_service as get_depression_service
+from app.config import ML_SERVICE_HOST, ML_SERVICE_PORT, DEPRESSION_THRESHOLD
 
 # Configure logging
 logging.basicConfig(
@@ -28,7 +18,7 @@ logger = logging.getLogger(__name__)
 # Initialize FastAPI app
 app = FastAPI(
     title="Mental Health ML Service",
-    description="Machine learning inference service for emotion and sentiment analysis",
+    description="Machine learning inference service for depression risk prediction",
     version="1.0.0"
 )
 
@@ -42,43 +32,37 @@ app.add_middleware(
 )
 
 # Global service instances
-_vad_service = None
-_emotion_service = None
+_depression_service = None
 
 
-def get_vad_service_instance():
-    """Lazy initialization of VAD sentiment service."""
-    global _vad_service
-    if _vad_service is None:
-        logger.info("Initializing VAD Sentiment Service...")
-        _vad_service = get_vad_service()
-        logger.info("VAD Sentiment Service initialized successfully")
-    return _vad_service
+def get_depression_service_instance():
+    """Lazy initialization of depression prediction service."""
+    global _depression_service
+    if _depression_service is None:
+        logger.info("Initializing Depression Prediction Service...")
+        _depression_service = get_depression_service()
+        logger.info("Depression Prediction Service initialized successfully")
+    return _depression_service
 
 
-def get_emotion_service_instance():
-    """Lazy initialization of emotion model service."""
-    global _emotion_service
-    if _emotion_service is None:
-        logger.info("Initializing Emotion Model Service...")
-        _emotion_service = get_emotion_service()
-        logger.info("Emotion Model Service initialized successfully")
-    return _emotion_service
+class DepressionSegmentDetails(BaseModel):
+    """Segment-level depression prediction details."""
+    num_segments: int
+    predictions: List[int]
+    probabilities: List[float]
+    mean_probability: float
+    std_probability: float
+    risk_level: str
 
 
-# Response models
-class SentimentResponse(BaseModel):
-    """Response model for sentiment analysis."""
-    vad: List[float]
-    emotion: str
-    sentiment: str
-    timing: Dict[str, float]
-
-
-class EmotionResponse(BaseModel):
-    """Response model for emotion classification."""
-    emotion: str
+class DepressionPredictionResponse(BaseModel):
+    """Response model for depression risk prediction."""
+    depression_risk: int  # 0 or 1
+    risk_probability: float  # 0.0-1.0
+    risk_level: str  # "High" or "Low"
     confidence: float
+    num_segments: int
+    segment_details: Optional[DepressionSegmentDetails] = None
 
 
 class HealthResponse(BaseModel):
@@ -108,104 +92,99 @@ async def health_check():
         service="ml-service",
         version="1.0.0",
         models_loaded={
-            "vad_sentiment": _vad_service is not None,
-            "emotion_model": _emotion_service is not None
+            "depression_prediction": _depression_service is not None
         }
     )
 
 
-@app.post("/api/ml/sentiment", response_model=SentimentResponse)
-async def predict_sentiment(file: UploadFile = File(...)):
+@app.post("/api/ml/depression", response_model=DepressionPredictionResponse)
+async def predict_depression(
+    file: UploadFile = File(...),
+    threshold: float = DEPRESSION_THRESHOLD
+):
     """
-    Analyze audio sentiment using VAD-based deep learning model.
+    Predict depression risk from audio using Random Forest model on TSFEL features.
     
     Args:
         file: Audio file (mp3, wav, etc.)
+        threshold: Probability threshold for depression classification (default 0.5)
         
     Returns:
-        VAD coordinates, emotion label, and sentiment classification
+        Depression risk prediction with probability score and confidence
     """
     if not file:
         raise HTTPException(status_code=400, detail="No file uploaded")
     
     try:
-        logger.info(f"Processing sentiment analysis for file: {file.filename}")
+        logger.info(f"Processing depression prediction for file: {file.filename}")
         audio_bytes = await file.read()
         
-        service = get_vad_service_instance()
-        result = service.predict(audio_bytes)
+        service = get_depression_service_instance()
+        result = service.predict_from_audio_bytes(audio_bytes, threshold=threshold)
         
-        logger.info(f"Sentiment analysis completed: {result['emotion']} ({result['sentiment']})")
-        return SentimentResponse(**result)
+        if result["status"] != "success":
+            raise Exception(result.get("error", "Unknown error"))
+        
+        data = result["data"]
+        logger.info(
+            f"Depression prediction completed: Risk={data['risk_level']} "
+            f"(Probability: {data['risk_probability']:.3f})"
+        )
+        
+        return DepressionPredictionResponse(**data)
         
     except FileNotFoundError as e:
         logger.error(f"Model file not found: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Model not found: {str(e)}")
     except Exception as e:
-        logger.error(f"Sentiment analysis failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Inference failed: {str(e)}")
+        logger.error(f"Depression prediction failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
 
-@app.post("/api/ml/emotion", response_model=EmotionResponse)
-async def predict_emotion(file: UploadFile = File(...)):
+@app.post("/api/ml/depression-batch")
+async def predict_depression_batch(files: List[UploadFile] = File(...)):
     """
-    Classify emotion using legacy sklearn model with librosa features.
+    Predict depression risk for multiple audio files.
     
     Args:
-        file: Audio file (mp3, wav, etc.)
+        files: Multiple audio files
         
     Returns:
-        Emotion label and confidence score
+        List of depression predictions
     """
-    if not file:
-        raise HTTPException(status_code=400, detail="No file uploaded")
+    if not files:
+        raise HTTPException(status_code=400, detail="No files uploaded")
+    
+    results = []
     
     try:
-        logger.info(f"Processing emotion classification for file: {file.filename}")
-        audio_bytes = await file.read()
+        service = get_depression_service_instance()
         
-        # Extract audio features
-        feature_vector = extract_features_from_bytes(audio_bytes)
+        for file in files:
+            logger.info(f"Processing batch depression prediction for file: {file.filename}")
+            audio_bytes = await file.read()
+            
+            result = service.predict_from_audio_bytes(audio_bytes, threshold=DEPRESSION_THRESHOLD)
+            
+            if result["status"] == "success":
+                results.append({
+                    "filename": file.filename,
+                    "status": "success",
+                    "prediction": result["data"]
+                })
+            else:
+                results.append({
+                    "filename": file.filename,
+                    "status": "error",
+                    "error": result.get("error", "Unknown error")
+                })
         
-        # Get prediction
-        service = get_emotion_service_instance()
-        emotion_label, confidence = service.predict(feature_vector)
-        
-        logger.info(f"Emotion classification completed: {emotion_label} (confidence: {confidence:.3f})")
-        return EmotionResponse(emotion=emotion_label, confidence=confidence)
-        
-    except Exception as e:
-        logger.error(f"Emotion classification failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Classification failed: {str(e)}")
-
-
-@app.post("/api/ml/emotion-from-features", response_model=EmotionResponse)
-async def predict_emotion_from_features(features: List[float]):
-    """
-    Classify emotion from pre-extracted feature vector.
-    
-    Args:
-        features: Audio feature vector as list of floats
-        
-    Returns:
-        Emotion label and confidence score
-    """
-    try:
-        logger.info(f"Processing emotion classification from {len(features)} features")
-        
-        # Convert to numpy array
-        feature_vector = np.array(features)
-        
-        # Get prediction
-        service = get_emotion_service_instance()
-        emotion_label, confidence = service.predict(feature_vector)
-        
-        logger.info(f"Emotion classification completed: {emotion_label} (confidence: {confidence:.3f})")
-        return EmotionResponse(emotion=emotion_label, confidence=confidence)
+        logger.info(f"Batch depression prediction completed for {len(files)} files")
+        return {"results": results, "total": len(files), "successful": sum(1 for r in results if r["status"] == "success")}
         
     except Exception as e:
-        logger.error(f"Emotion classification failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Classification failed: {str(e)}")
+        logger.error(f"Batch depression prediction failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Batch prediction failed: {str(e)}")
 
 
 @app.post("/warmup")
@@ -216,8 +195,7 @@ async def warmup():
     """
     try:
         logger.info("Warming up models...")
-        get_vad_service_instance()
-        get_emotion_service_instance()
+        get_depression_service_instance()
         logger.info("Model warmup completed successfully")
         return {"status": "models warmed up", "success": True}
     except Exception as e:

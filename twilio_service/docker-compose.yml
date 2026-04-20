@@ -1,0 +1,130 @@
+version: '3.8'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# twilio_service — fully standalone Docker Compose stack.
+#
+# Runs its own PostgreSQL database and RabbitMQ broker.
+# Does NOT share any volumes or networks with the backend stack.
+#
+# Usage:
+#   cd twilio_service
+#   cp .env.example .env          # fill in Twilio credentials & APP_HOST
+#   docker compose up -d
+#   docker compose exec twilio-api alembic upgrade head   # first-time only
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PostgreSQL (service-owned) ─────────────────────────────────────────────
+  twilio-postgres:
+    image: postgres:15-alpine
+    container_name: twilio-postgres
+    environment:
+      POSTGRES_USER: ${TWILIO_DB_USER:-twilio_user}
+      POSTGRES_PASSWORD: ${TWILIO_DB_PASSWORD:-twilio_pass}
+      POSTGRES_DB: ${TWILIO_DB_NAME:-mhealthDB}
+    ports:
+      - "127.0.0.1:5433:5432"   # expose on 5433 to avoid clashing with backend on 5432
+    volumes:
+      - twilio_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${TWILIO_DB_USER:-twilio_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - twilio-net
+
+  # ── RabbitMQ (service-owned) ───────────────────────────────────────────────
+  twilio-rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: twilio-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${TWILIO_RABBIT_USER:-twilio_mq}
+      RABBITMQ_DEFAULT_PASS: ${TWILIO_RABBIT_PASS:-twilio_mq_pass}
+    ports:
+      - "127.0.0.1:5673:5672"    # AMQP (5673 to avoid clash with backend's 5672)
+      - "127.0.0.1:15673:15672"  # Management UI
+    volumes:
+      - twilio_rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - twilio-net
+
+  # ── FastAPI server ─────────────────────────────────────────────────────────
+  twilio-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: twilio-api
+    command: ["./start.sh", "api"]
+    env_file: .env
+    environment:
+      POSTGRES_DB_URL: postgresql://${TWILIO_DB_USER:-twilio_user}:${TWILIO_DB_PASSWORD:-twilio_pass}@twilio-postgres:5432/${TWILIO_DB_NAME:-mhealthDB}
+      RABBITMQ_URL: amqp://${TWILIO_RABBIT_USER:-twilio_mq}:${TWILIO_RABBIT_PASS:-twilio_mq_pass}@twilio-rabbitmq:5672//
+      TWILIO_SERVICE_PORT: "8002"
+    ports:
+      - "8002:8002"
+    depends_on:
+      twilio-postgres:
+        condition: service_healthy
+      twilio-rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - twilio-net
+
+  # ── Celery worker ──────────────────────────────────────────────────────────
+  twilio-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: twilio-worker
+    command: ["./start.sh", "worker"]
+    env_file: .env
+    environment:
+      POSTGRES_DB_URL: postgresql://${TWILIO_DB_USER:-twilio_user}:${TWILIO_DB_PASSWORD:-twilio_pass}@twilio-postgres:5432/${TWILIO_DB_NAME:-mhealthDB}
+      RABBITMQ_URL: amqp://${TWILIO_RABBIT_USER:-twilio_mq}:${TWILIO_RABBIT_PASS:-twilio_mq_pass}@twilio-rabbitmq:5672//
+    depends_on:
+      twilio-postgres:
+        condition: service_healthy
+      twilio-rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - twilio-net
+
+  # ── Celery beat (periodic scheduler) ──────────────────────────────────────
+  twilio-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: twilio-beat
+    command: ["./start.sh", "beat"]
+    env_file: .env
+    environment:
+      POSTGRES_DB_URL: postgresql://${TWILIO_DB_USER:-twilio_user}:${TWILIO_DB_PASSWORD:-twilio_pass}@twilio-postgres:5432/${TWILIO_DB_NAME:-mhealthDB}
+      RABBITMQ_URL: amqp://${TWILIO_RABBIT_USER:-twilio_mq}:${TWILIO_RABBIT_PASS:-twilio_mq_pass}@twilio-rabbitmq:5672//
+    depends_on:
+      twilio-postgres:
+        condition: service_healthy
+      twilio-rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - twilio-net
+
+volumes:
+  twilio_postgres_data:
+  twilio_rabbitmq_data:
+
+networks:
+  twilio-net:
+    driver: bridge
+

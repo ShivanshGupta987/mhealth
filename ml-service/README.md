@@ -73,9 +73,9 @@ docker run -p 8001:8001 \
 
 ### Using Docker Compose
 
-From the backend directory:
+From the project root directory:
 ```bash
-docker-compose up ml-service
+docker compose up ml-service
 ```
 
 ## Configuration

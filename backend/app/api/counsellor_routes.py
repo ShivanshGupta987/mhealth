@@ -310,6 +310,17 @@ def get_flagged_targets(db: Session = Depends(get_db)):
     Get all flagged targets with their details.
     """
     try:
+        # Subquery: latest call per target with Emotion_Id = E003
+        latest_call_sq = (
+            db.query(
+                Calls.Target_Id.label("Target_Id"),
+                func.max(Calls.Scheduled_Time).label("max_time"),
+            )
+            .filter(Calls.Emotion_Id == "E003")
+            .group_by(Calls.Target_Id)
+            .subquery()
+        )
+
         flagged = db.query(
             FlaggedTargets.Flag_Id,
             FlaggedTargets.Call_Scheduled_DateTime,
@@ -318,9 +329,17 @@ def get_flagged_targets(db: Session = Depends(get_db)):
             Targets.Roll_No,
             Targets.Phone_No,
             Targets.Department_Name,
-            Targets.Program
+            Targets.Program,
+            Calls.Analysis_Score,
         ).join(
             Targets, FlaggedTargets.Target_Id == Targets.Target_Id
+        ).outerjoin(
+            latest_call_sq, latest_call_sq.c.Target_Id == Targets.Target_Id
+        ).outerjoin(
+            Calls,
+            (Calls.Target_Id == Targets.Target_Id) &
+            (Calls.Scheduled_Time == latest_call_sq.c.max_time) &
+            (Calls.Emotion_Id == "E003")
         ).order_by(desc(FlaggedTargets.Call_Scheduled_DateTime)).all()
         
         flagged_data = [
@@ -332,7 +351,8 @@ def get_flagged_targets(db: Session = Depends(get_db)):
                 "Phone_No": f.Phone_No,
                 "Department_Name": f.Department_Name,
                 "Program": f.Program,
-                "Call_Scheduled_DateTime": f.Call_Scheduled_DateTime.astimezone(IST).strftime("%Y-%m-%d %H:%M") if f.Call_Scheduled_DateTime else None
+                "Call_Scheduled_DateTime": f.Call_Scheduled_DateTime.astimezone(IST).strftime("%Y-%m-%d %H:%M") if f.Call_Scheduled_DateTime else None,
+                "Analysis_Score": f.Analysis_Score,
             }
             for f in flagged
         ]
@@ -350,8 +370,8 @@ def get_flagged_targets(db: Session = Depends(get_db)):
 def export_potential_cases(
     range: str = Query(
         "7d",
-        description="Time window to export. Allowed: 24h, 7d, 30d.",
-        regex="^(24h|7d|30d)$",
+        description="Time window to export. Allowed: 24h, 7d, 30d, all.",
+        regex="^(24h|7d|30d|all)$",
     ),
     db: Session = Depends(get_db),
 ):
@@ -359,17 +379,9 @@ def export_potential_cases(
 
     Returns JSON rows; frontend converts to XLSX.
     Fields: Name, Roll_No, Phone_No, Department_Name, Program, Call_Made_DateTime.
+    Use range='all' to export all data without any time filter.
     """
     try:
-        window_map = {
-            "24h": timedelta(hours=24),
-            "7d": timedelta(days=7),
-            "30d": timedelta(days=30),
-        }
-        delta = window_map.get(range, timedelta(days=7))
-        now_ist = datetime.now(IST)
-        start_time = now_ist - delta
-
         # Use scheduled time only per requirement
         call_time_expr = Calls.Scheduled_Time.label("call_time")
 
@@ -381,14 +393,23 @@ def export_potential_cases(
                 Targets.Department_Name,
                 Targets.Program,
                 call_time_expr,
-                Emotions.Emotion.label("Emotion"),
+                Calls.Analysis_Score,
             )
             .join(Calls, Calls.Target_Id == Targets.Target_Id)
-            .outerjoin(Emotions, Calls.Emotion_Id == Emotions.Emotion_Id)
-            .filter(call_time_expr >= start_time)
-            .filter(func.lower(func.coalesce(Emotions.Emotion, "")).like("%high%"))
+            .filter(Calls.Emotion_Id == "E003")
             .order_by(desc(call_time_expr))
         )
+
+        if range != "all":
+            window_map = {
+                "24h": timedelta(hours=24),
+                "7d": timedelta(days=7),
+                "30d": timedelta(days=30),
+            }
+            delta = window_map.get(range, timedelta(days=7))
+            now_ist = datetime.now(IST)
+            start_time = now_ist - delta
+            query = query.filter(call_time_expr >= start_time)
 
         rows = []
         for row in query.all():
@@ -410,6 +431,7 @@ def export_potential_cases(
                     "Department_Name": row.Department_Name,
                     "Program": row.Program,
                     "Call_Made_DateTime": call_time_str,
+                    "Analysis_Score": row.Analysis_Score,
                 }
             )
 
@@ -543,6 +565,7 @@ def get_target_details(target_id: str, db: Session = Depends(get_db)):
                 Calls.Status,
                 Calls.Duration,
                 Calls.Recording_Url,
+                Calls.Analysis_Score,
                 Emotions.Emotion,
                 Emotions.Emotion_Id
             ).outerjoin(
@@ -572,7 +595,8 @@ def get_target_details(target_id: str, db: Session = Depends(get_db)):
                     )
                 ),
                 "Emotion": c.Emotion,
-                "Emotion_Id": c.Emotion_Id
+                "Emotion_Id": c.Emotion_Id,
+                "Analysis_Score": c.Analysis_Score,
             }
             for c in calls
         ]

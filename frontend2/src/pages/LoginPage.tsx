@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box,
   Button,
@@ -11,6 +11,7 @@ import {
   Stack,
   CircularProgress,
   Link,
+  Divider,
 } from '@mui/material';
 import { login } from '../api/auth';
 import { useAuth } from '../contexts/AuthContext';
@@ -21,7 +22,24 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { login: authLogin } = useAuth();
+
+  // Show errors forwarded from OAuth callback (e.g. not authorised)
+  useEffect(() => {
+    const urlError = searchParams.get('error');
+    if (urlError) setError(urlError);
+  }, [searchParams]);
+
+  // Handle successful Google OAuth redirect (?token=...&admin_id=...)
+  useEffect(() => {
+    const token = searchParams.get('token');
+    const adminId = searchParams.get('admin_id');
+    if (token && adminId) {
+      authLogin(token, adminId);
+      navigate('/');
+    }
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -204,6 +222,36 @@ export default function LoginPage() {
               Forgot password?
             </Link>
           </Box>
+
+          <Divider sx={{ my: 3, color: 'text.secondary', fontSize: '0.8rem' }}>or</Divider>
+
+          {/* IITGN SSO (INAS) Sign-in */}
+          <Button
+            fullWidth
+            variant="contained"
+            onClick={() => { window.location.href = '/api/auth/sso/login'; }}
+            sx={{
+              background: '#1a3fa3',
+              color: '#fff',
+              fontWeight: 700,
+              fontSize: '0.95rem',
+              py: 1.4,
+              borderRadius: 1,
+              textTransform: 'none',
+              boxShadow: '0 4px 14px rgba(26, 63, 163, 0.3)',
+              transition: 'all 0.3s ease',
+              '&:hover': {
+                background: '#163090',
+                boxShadow: '0 6px 20px rgba(26, 63, 163, 0.4)',
+                transform: 'translateY(-2px)',
+              },
+            }}
+          >
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1.3 }}>
+              <span style={{ fontSize: '1rem' }}>इनास / INAS</span>
+              <span style={{ fontSize: '0.72rem', fontWeight: 400, opacity: 0.9 }}>Institute Authentication Services</span>
+            </Box>
+          </Button>
         </CardContent>
       </Card>
     </Box>

@@ -115,12 +115,7 @@ def _map_exotel_status(exotel_status: Optional[str], duration_seconds: Optional[
 
 
 # --- IMPORT API ROUTERS ---
-from app.api.frontend_routes import router as frontend_router
 from app.api.auth_routes import router as auth_router
-from app.api.database_routes import router as admin_router
-from app.api.call_monitoring_routes import router as monitor_router
-from app.api.target_monitoring_routes import router as target_monitor_router
-from app.api.counsellor_routes import router as counsellor_router
 from app.api.ml_routes import router as ml_router
 
 # Exotel API base URL
@@ -140,11 +135,24 @@ logger = root_logger
 # FastAPI app
 app = FastAPI(title="MHealth")
 
+# CORS origins - supports both domain and IP-based access
+# FRONTEND_URL can be a single URL or comma-separated list
+frontend_urls = os.getenv("FRONTEND_URL", "http://localhost:3000")
 origins = [
-    "http://localhost:5173",  # Vite dev server
-    os.getenv("FRONTEND_URL", "http://localhost:3000"),  # Production frontend
-    "http://10.0.62.206:3000",  # Server IP
+    "http://localhost:5173",   # Vite dev server
+    "https://localhost:5173",  # Vite dev server (HTTPS)
+    "http://localhost:3000",   # Docker local (HTTP)
+    "https://localhost:3000",  # Docker local (HTTPS)
+    "http://localhost",        # Docker local without port
+    "https://localhost",       # Docker local HTTPS without port
 ]
+
+# Add frontend URLs from environment (supports comma-separated list)
+if frontend_urls:
+    for url in frontend_urls.split(','):
+        url = url.strip()
+        if url and url not in origins:
+            origins.append(url)
 
 app.add_middleware(
     CORSMiddleware,
@@ -168,13 +176,20 @@ def health_check():
     }
 
 # --- REGISTER API ROUTERS ---
+# Keep only backend-owned routers (auth + ML proxy).
+# Legacy Exotel/call-management routers were moved out to twilio_service.
 app.include_router(auth_router)
-app.include_router(admin_router)
-app.include_router(monitor_router)
-app.include_router(frontend_router)
-app.include_router(target_monitor_router)
-app.include_router(counsellor_router)
 app.include_router(ml_router)
+
+
+def _legacy_exotel_endpoint_removed(endpoint: str) -> None:
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail=(
+            f"'{endpoint}' has been removed from backend. "
+            "Use twilio_service APIs for call scheduling/monitoring workflows."
+        ),
+    )
 
 # MinIO connection setup for storing recordings
 try: 
@@ -190,7 +205,7 @@ try:
         logger.info(f"Created '{CONTAINER_NAME}' bucket in MinIO")
     else:
         logger.info(f"'{CONTAINER_NAME}' bucket already exists")
-except S3Error as e: 
+except Exception as e:
     logger.exception(f"MinIO client error: {e}")
     minio_client = None 
 
@@ -398,6 +413,8 @@ async def status_callback(request: Request, db: Session = Depends(get_db)):
     Exotel StatusCallback handler: updates call status and saves recording if provided.
     This coexists with legacy passthru/voicebot code (kept intact for manual cleanup).
     """
+    _legacy_exotel_endpoint_removed("/status_callback")
+
     correlation_id = str(uuid.uuid4())
     form_data = await request.form()
 
@@ -488,6 +505,8 @@ async def passthru(request: Request):
     Exotel Passthru applet endpoint (GET only).
     Receives call details as query parameters, validates token, logs, stores recording in MinIO if present, and returns 200 OK.
     """
+    _legacy_exotel_endpoint_removed("/passthru")
+
     correlation_id = str(uuid.uuid4())
     params = dict(request.query_params)
 
@@ -614,6 +633,8 @@ async def schedule_calls(
     Schedule calls for all targets
     Triggers Celery Beat to initiate calls
     """
+    _legacy_exotel_endpoint_removed("/schedule_calls")
+
     correlation_id = str(uuid.uuid4())
     logger.info(f"----> Scheduling calls by {current_user}, CorrelationID={correlation_id} <----")
     
@@ -726,6 +747,8 @@ async def health_check(db: Session = Depends(get_db)):
 @app.post("/debug/fetch-recording/{call_sid}")
 async def debug_fetch_recording(call_sid: str, db: Session = Depends(get_db)):
     """Manually fetch recording for a specific CallSid from Exotel"""
+    _legacy_exotel_endpoint_removed("/debug/fetch-recording/{call_sid}")
+
     correlation_id = str(uuid.uuid4())
     logger.info(f"----> Manual recording fetch for CallSid={call_sid}, CorrelationID={correlation_id} <----")
     

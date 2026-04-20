@@ -96,6 +96,7 @@ The machine learning inference is deployed as a **separate microservice** to ena
 
 ```
 mhealth/
+├── docker-compose.yml         # Root Docker services definition
 ├── backend/                    # Backend application directory
 │   ├── app/                    # Main application package
 │   │   ├── api/               # API route modules
@@ -129,7 +130,6 @@ mhealth/
 │   │
 │   ├── alembic.ini            # Alembic configuration
 │   ├── create_admin.py        # Admin user creation script
-│   ├── docker-compose.yml     # Docker services definition
 │   ├── get_recordings.py      # Utility to fetch recordings
 │   ├── insert_targets.py      # Bulk target insertion script
 │   ├── requirements.txt       # Python dependencies
@@ -333,8 +333,7 @@ The easiest way to run the entire system:
 
 4. **Start all services:**
    ```bash
-   cd backend
-   docker-compose up -d
+   docker compose up -d
    ```
 
    This starts:
@@ -346,8 +345,7 @@ The easiest way to run the entire system:
 
 5. **Run database migrations:**
    ```bash
-   cd backend
-   alembic upgrade head
+   docker compose exec backend-api alembic upgrade head
    ```
 
 6. **Start backend services:**
@@ -440,7 +438,7 @@ For development without Docker:
 
 5. **Start infrastructure services:**
    ```bash
-   docker-compose up -d postgres rabbitmq minio
+   docker compose -f ../docker-compose.yml up -d postgres rabbitmq minio
    ```
 
 6. **Run database migrations:**
@@ -581,8 +579,8 @@ alembic downgrade -1
 
 ```bash
 # Production docker-compose.yml setup
-cd backend
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+cd mhealth
+docker compose up -d --build
 ```
 
 #### Separate ML Service Deployment
@@ -699,9 +697,9 @@ spec:
 - Reduce MAX_AUDIO_DURATION if files are too large
 
 **Docker Container Issues:**
-- Check logs: `docker-compose logs -f ml-service`
+- Check logs: `docker compose logs -f ml-service`
 - Verify volume mounts: `docker inspect mhealth-ml-service`
-- Rebuild image: `docker-compose build --no-cache ml-service`
+- Rebuild image: `docker compose build --no-cache ml-service`
 - Check port conflicts: `netstat -an | findstr 8001`
 
 ## 📚 Additional Resources

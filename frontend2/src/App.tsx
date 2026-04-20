@@ -2,9 +2,9 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import DashboardLayout from './layouts/DashboardLayout';
-import DatabaseManagementPage from './pages/DatabaseManagementPage';
 import EntryDashboardDemoPage from './pages/CallManagementDemoPage.tsx';
-import EntryDashboardPage from './pages/CallManagementPage.tsx';
+import TwilioCallManagementPage from './pages/TwilioCallManagementPage.tsx';
+import TwilioDatabasePage from './pages/TwilioDatabasePage.tsx';
 import SystemHealthPage from './pages/SystemHealthPage.tsx';
 import MetricsPage from './pages/CallStatusDashboard.tsx';
 import LoginPage from './pages/LoginPage';
@@ -35,11 +35,11 @@ const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <AboutPage /> },
-      { path: 'database', element: <DatabaseManagementPage /> },
-      { path: 'entry-dashboard', element: <EntryDashboardPage /> },
+      { path: 'twilio-call-management', element: <TwilioCallManagementPage /> },
+      { path: 'twilio-database', element: <TwilioDatabasePage /> },
       { path: 'entry-dashboard-demo', element: <EntryDashboardDemoPage /> },
-      { path: 'system-health', element: <SystemHealthPage /> },
-      { path: 'metrics', element: <MetricsPage /> },
+      { path: 'admin-dashboard', element: <SystemHealthPage /> },
+      { path: 'call-status-dashboard', element: <MetricsPage /> },
       { path: 'reset-password', element: <ResetPasswordPage /> },
     ],
   },

@@ -1,6 +1,26 @@
 import axios from 'axios';
 
-const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// Use dynamic API URL based on current host (supports both IP and domain)
+// Automatically handles HTTP/HTTPS based on how frontend is accessed
+// In production (Docker):
+// - Always uses nginx proxy (/api) to avoid mixed content and CORS issues
+// - Nginx forwards /api/* to backend-api:8000 internally
+// In development, uses VITE_API_URL or localhost
+const getBaseURL = () => {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  
+  if (import.meta.env.MODE === 'production') {
+    // In production Docker, always use nginx proxy
+    // This works for both HTTP and HTTPS, any port
+    return '/api';
+  }
+  
+  return 'http://localhost:8000';
+};
+
+const baseURL = getBaseURL();
 
 const apiClient = axios.create({
   baseURL,

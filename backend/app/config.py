@@ -43,5 +43,28 @@ SMTP_USER = os.getenv('SMTP_USER')
 SMTP_PASSWORD = os.getenv('SMTP_PASSWORD')
 SMTP_FROM_EMAIL = os.getenv('SMTP_FROM_EMAIL', SMTP_USER)
 SMTP_FROM_NAME = os.getenv('SMTP_FROM_NAME', 'MHealth Platform')
-FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
+
+# Frontend URL - supports comma-separated list, uses first for email links
+_frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:5173')
+FRONTEND_URL = _frontend_url.split(',')[0].strip() if _frontend_url else 'http://localhost:5173'
+
 PASSWORD_RESET_TOKEN_EXPIRE_HOURS = int(os.getenv('PASSWORD_RESET_TOKEN_EXPIRE_HOURS', '2'))
+
+# IITGN SSO (Keycloak / OpenID Connect)
+IITGN_CLIENT_ID = os.getenv('IITGN_CLIENT_ID', '')
+IITGN_CLIENT_SECRET = os.getenv('IITGN_CLIENT_SECRET', '')
+# Must exactly match the redirect URI registered with IITGN IT
+IITGN_REDIRECT_URI = os.getenv('IITGN_REDIRECT_URI', 'https://mhealth.iitgn.ac.in/api/auth/sso/callback')
+
+# SSO email allowlist
+# Format: comma-separated list of entries.
+# Supported entry formats:
+# - exact email: alice@iitgn.ac.in
+# - domain pattern: @iitgn.ac.in
+# Leave empty to allow all emails.
+_raw_iitgn_allowed_emails = os.getenv('IITGN_ALLOWED_EMAILS', '')
+IITGN_ALLOWED_EMAILS = [
+	item.strip().lower()
+	for item in _raw_iitgn_allowed_emails.split(',')
+	if item.strip()
+]

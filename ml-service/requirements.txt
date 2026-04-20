@@ -5,14 +5,12 @@
 fastapi[standard]
 uvicorn[standard]
 
-# Machine Learning - PyTorch Stack
-torch
-torchaudio
-transformers
-
 # Machine Learning - sklearn Stack  
 scikit-learn
 joblib
+
+# Feature Extraction
+tsfel
 
 # Audio Processing
 librosa

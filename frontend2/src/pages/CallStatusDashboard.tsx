@@ -3,7 +3,7 @@ import { Alert, Box, Card, CardContent, Grid, Stack, Typography, Chip } from '@m
 import { useQuery } from '@tanstack/react-query';
 import PageHeader from '../components/PageHeader';
 import LoadingState from '../components/LoadingState';
-import { listTargets, listCalls, listFlaggedTargetsRaw, type TargetRecord, type CallRecord, type FlaggedTargetRecord } from '../api/database';
+import { listTargets, listCalls, type TargetRecord, type CallRecord } from '../api/database';
 
 function Stat({ label, value, color }: { label: string; value: string | number; color?: string }) {
   return (
@@ -31,7 +31,6 @@ function Stat({ label, value, color }: { label: string; value: string | number; 
 export default function MetricsPage() {
   const targetsQuery = useQuery<TargetRecord[]>({ queryKey: ['db-targets'], queryFn: listTargets });
   const callsQuery = useQuery<CallRecord[]>({ queryKey: ['db-calls'], queryFn: listCalls });
-  const flaggedQuery = useQuery<FlaggedTargetRecord[]>({ queryKey: ['db-flagged'], queryFn: listFlaggedTargetsRaw });
 
   const now = Date.now();
   const since24h = now - 24 * 60 * 60 * 1000;
@@ -49,16 +48,21 @@ export default function MetricsPage() {
   }, [targetsQuery.data]);
 
   const flaggedStats = useMemo(() => {
-    const rows = flaggedQuery.data ?? [];
-    const flaggedLast24h = rows.reduce((acc, row) => {
-      const ts = parseDate((row as any).Call_Scheduled_DateTime);
-      return ts && ts >= since24h ? acc + 1 : acc;
-    }, 0);
+    const rows = callsQuery.data ?? [];
+    const depressedAll = new Set<string>();
+    const depressed24h = new Set<string>();
+    rows.forEach((c) => {
+      if (c.Emotion_Id === 'E003' && c.Target_Id) {
+        depressedAll.add(c.Target_Id);
+        const ts = parseDate(c.Scheduled_Time as string | null | undefined);
+        if (ts && ts >= since24h) depressed24h.add(c.Target_Id);
+      }
+    });
     return {
-      total: rows.length,
-      last24h: flaggedLast24h,
+      total: depressedAll.size,
+      last24h: depressed24h.size,
     };
-  }, [flaggedQuery.data, since24h]);
+  }, [callsQuery.data, since24h]);
 
   // Groups to show on metrics (match Entry Dashboard labels)
   const STATUS_GROUPS = [
@@ -117,8 +121,8 @@ export default function MetricsPage() {
     return label;
   };
 
-  const isLoading = targetsQuery.isLoading || callsQuery.isLoading || flaggedQuery.isLoading;
-  const hasError = targetsQuery.error || callsQuery.error || flaggedQuery.error;
+  const isLoading = targetsQuery.isLoading || callsQuery.isLoading;
+  const hasError = targetsQuery.error || callsQuery.error;
 
   return (
     <Box>

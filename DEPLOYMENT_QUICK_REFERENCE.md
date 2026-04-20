@@ -57,8 +57,7 @@ cd /home/your-username/mhealth
 chmod +x backend/start.sh
 
 # 5. Create .env from template
-cd backend
-cp .env.example .env
+cp backend/.env.example backend/.env
 
 # 6. Generate secure values
 openssl rand -base64 32  # Copy for POSTGRES_PASSWORD
@@ -66,7 +65,7 @@ openssl rand -hex 32     # Copy for JWT_SECRET_KEY
 openssl rand -base64 32  # Copy for MINIO_ROOT_PASSWORD
 
 # 7. Edit .env with values from table below
-nano .env
+nano backend/.env
 
 # 8. Deploy!
 docker compose up -d --build
@@ -85,8 +84,8 @@ curl http://localhost:8000/health
 | `POSTGRES_PASSWORD` | Random secure password | `openssl rand -base64 32` |
 | `JWT_SECRET_KEY` | Random 64-char hex | `openssl rand -hex 32` |
 | `MINIO_ROOT_PASSWORD` | Random secure password | `openssl rand -base64 32` |
-| `FRONTEND_URL` | Server IP | `http://192.168.1.100` (your actual IP) |
-| `APP_HOST` | Server IP or domain | `192.168.1.100` or `mhealth.college.edu` |
+| `FRONTEND_URL` | Server URL | `http://mhealth.iitgn.ac.in` or `http://192.168.1.100` |
+| `APP_HOST` | Server domain or IP | `mhealth.iitgn.ac.in` or `192.168.1.100` |
 | `EXOTEL_SID` | Real Exotel SID | From your Exotel dashboard |
 | `EXOTEL_API_KEY` | Real API Key | From your Exotel dashboard |
 | `EXOTEL_API_TOKEN` | Real API Token | From your Exotel dashboard |
@@ -212,7 +211,6 @@ cd /home/user/mhealth
 git pull origin main
 
 # Rebuild and restart
-cd backend
 docker compose up -d --build
 
 # Check status

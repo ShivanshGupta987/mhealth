@@ -1,0 +1,25 @@
+# twilio_service/.gitignore
+
+# Secrets — never commit
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+.venv3/
+venv/
+env/
+
+# Alembic runtime artifacts
+celerybeat-schedule.*
+
+# IDE
+.vscode/
+.idea/

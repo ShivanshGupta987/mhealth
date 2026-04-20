@@ -1,5 +1,6 @@
 # app/api/auth.py
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
@@ -7,10 +8,19 @@ from passlib.context import CryptContext
 from jose import jwt
 from jose.exceptions import JWTError
 import secrets
-from app.config import JWT_SECRET_KEY, ACCESS_TOKEN_EXPIRE_MINUTES, PASSWORD_RESET_TOKEN_EXPIRE_HOURS
+import httpx
+from urllib.parse import urlencode
+from app.config import (
+    JWT_SECRET_KEY, ACCESS_TOKEN_EXPIRE_MINUTES, PASSWORD_RESET_TOKEN_EXPIRE_HOURS,
+    IITGN_CLIENT_ID, IITGN_CLIENT_SECRET, IITGN_REDIRECT_URI, IITGN_ALLOWED_EMAILS,
+    FRONTEND_URL,
+)
 from app.sql_db import get_db
 from app.models import Admins, PasswordResetTokens
 from app.email_utils import send_password_reset_email
+
+# In-memory CSRF state store (single-server deployment)
+_oauth_states: dict = {}
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -203,4 +213,107 @@ def verify_reset_token(token: str, db: Session = Depends(get_db)):
         "email": admin.Email if admin else None
     }
 
+
+# ────────────────────────────────────────────────────────────
+# IITGN SSO (Keycloak / OpenID Connect)
+# ────────────────────────────────────────────────────────────
+
+IITGN_AUTH_BASE = "https://auth.iitgn.ac.in/realms/iitgnsso/protocol/openid-connect"
+
+
+@router.get("/sso/login")
+def sso_login():
+    """Redirect user to IITGN SSO (Keycloak) consent screen."""
+    state = secrets.token_urlsafe(16)
+    _oauth_states[state] = True
+    params = {
+        "client_id": IITGN_CLIENT_ID,
+        "redirect_uri": IITGN_REDIRECT_URI,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "state": state,
+    }
+    url = f"{IITGN_AUTH_BASE}/auth?" + urlencode(params)
+    return RedirectResponse(url)
+
+
+@router.get("/sso/callback")
+def sso_callback(
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """Handle IITGN SSO callback, issue JWT, redirect to frontend."""
+    frontend_login = f"{FRONTEND_URL}/login"
+
+    if error:
+        return RedirectResponse(f"{frontend_login}?error=SSO+sign-in+was+cancelled")
+
+    if not state or state not in _oauth_states:
+        return RedirectResponse(f"{frontend_login}?error=Invalid+SSO+state")
+    _oauth_states.pop(state, None)
+
+    if not code:
+        return RedirectResponse(f"{frontend_login}?error=No+authorisation+code+received")
+
+    # Exchange authorisation code for tokens
+    try:
+        token_resp = httpx.post(
+            f"{IITGN_AUTH_BASE}/token",
+            data={
+                "code": code,
+                "client_id": IITGN_CLIENT_ID,
+                "client_secret": IITGN_CLIENT_SECRET,
+                "redirect_uri": IITGN_REDIRECT_URI,
+                "grant_type": "authorization_code",
+            },
+            timeout=10,
+        )
+        token_resp.raise_for_status()
+        access_token = token_resp.json()["access_token"]
+    except Exception:
+        return RedirectResponse(f"{frontend_login}?error=Failed+to+exchange+token+with+IITGN+SSO")
+
+    # Fetch user info from Keycloak
+    try:
+        info_resp = httpx.get(
+            f"{IITGN_AUTH_BASE}/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10,
+        )
+        info_resp.raise_for_status()
+        user_info = info_resp.json()
+    except Exception:
+        return RedirectResponse(f"{frontend_login}?error=Failed+to+fetch+user+info+from+IITGN+SSO")
+
+    email: str = user_info.get("email", "")
+    if not email:
+        return RedirectResponse(f"{frontend_login}?error=No+email+returned+by+IITGN+SSO")
+
+    # Validate email allowlist if configured
+    if IITGN_ALLOWED_EMAILS:
+        email_lower = email.strip().lower()
+        is_allowed = any(
+            email_lower.endswith(allowed_item)
+            if allowed_item.startswith('@')
+            else email_lower == allowed_item
+            for allowed_item in IITGN_ALLOWED_EMAILS
+        )
+
+        if not is_allowed:
+            return RedirectResponse(f"{frontend_login}?error=Your+email+is+not+authorized+to+access+this+application")
+
+    # Find or auto-create admin for this SSO account
+    admin = db.query(Admins).filter(Admins.Email == email).first()
+    if not admin:
+        admin = Admins(Email=email, Password="")  # SSO-only, no local password
+        db.add(admin)
+        db.commit()
+        db.refresh(admin)
+
+    jwt_token = create_access_token({"sub": str(admin.Admin_Id), "email": admin.Email})
+    return RedirectResponse(
+        f"{frontend_login}?token={jwt_token}&admin_id={str(admin.Admin_Id)}"
+    )
 

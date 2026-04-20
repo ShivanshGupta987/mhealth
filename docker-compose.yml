@@ -1,5 +1,12 @@
 version: '3.8'
 
+# Root docker-compose.yml
+#
+# Usage:
+#   cp backend/.env.example backend/.env
+#   cp twilio_service/.env.example twilio_service/.env
+#   docker compose up -d
+
 services:
   # PostgreSQL Database
   postgres:
@@ -8,7 +15,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
-      POSTGRES_DB: mhealth
+      POSTGRES_DB: mhealthDB
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
@@ -26,8 +33,8 @@ services:
     image: rabbitmq:3-management-alpine
     container_name: mhealth-rabbitmq
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-mhealth}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-admin123}
     ports:
       - "127.0.0.1:5672:5672"   # AMQP port
       - "127.0.0.1:15672:15672" # Management UI
@@ -47,8 +54,8 @@ services:
     container_name: mhealth-minio
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-mhealth}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-admin123}
     ports:
       - "127.0.0.1:9000:9000"  # API port
       - "127.0.0.1:9001:9001"  # Console UI
@@ -65,22 +72,22 @@ services:
   # Backend API (FastAPI Application)
   backend-api:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
     container_name: mhealth-backend-api
     env_file:
-      - .env
+      - backend/.env
     environment:
       - SERVICE_TYPE=api
-      - POSTGRES_DB_URL=${POSTGRES_DB_URL}
-      - RABBITMQ_URL=${RABBITMQ_URL}
-      - MINIO_ENDPOINT=${MINIO_ENDPOINT}
-      - ML_SERVICE_URL=${ML_SERVICE_URL}
+      - POSTGRES_DB_URL=${POSTGRES_DB_URL:-postgresql://postgres:password@postgres:5432/mhealthDB}
+      - RABBITMQ_URL=${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672//}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio:9000}
+      - ML_SERVICE_URL=${ML_SERVICE_URL:-http://ml-service:8001}
     ports:
       - "8000:8000"
     volumes:
-      - ./app:/app/app
-      - ./alembic:/app/alembic
+      - ./backend/app:/app/app
+      - ./backend/alembic:/app/alembic
     depends_on:
       - postgres
       - rabbitmq
@@ -98,19 +105,19 @@ services:
   # Backend Celery Worker (Async Task Processing)
   backend-celery:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
     container_name: mhealth-backend-celery
     env_file:
-      - .env
+      - backend/.env
     environment:
       - SERVICE_TYPE=celery_worker
-      - POSTGRES_DB_URL=${POSTGRES_DB_URL}
-      - RABBITMQ_URL=${RABBITMQ_URL}
-      - MINIO_ENDPOINT=${MINIO_ENDPOINT}
-      - ML_SERVICE_URL=${ML_SERVICE_URL}
+      - POSTGRES_DB_URL=${POSTGRES_DB_URL:-postgresql://postgres:password@postgres:5432/mhealthDB}
+      - RABBITMQ_URL=${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672//}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio:9000}
+      - ML_SERVICE_URL=${ML_SERVICE_URL:-http://ml-service:8001}
     volumes:
-      - ./app:/app/app
+      - ./backend/app:/app/app
     depends_on:
       - postgres
       - rabbitmq
@@ -123,13 +130,13 @@ services:
   # ML Service (Sentiment & Emotion Analysis)
   ml-service:
     build:
-      context: ../ml-service
+      context: ./ml-service
       dockerfile: Dockerfile
     container_name: mhealth-ml-service
     ports:
       - "127.0.0.1:8001:8001"
     volumes:
-      - ../ml-service/model_store:/app/model_store
+      - ./ml-service/model_store:/app/model_store
     environment:
       - ML_SERVICE_HOST=0.0.0.0
       - ML_SERVICE_PORT=8001
@@ -147,17 +154,22 @@ services:
   # Frontend (React + Nginx)
   frontend:
     build:
-      context: ../frontend2
+      context: ./frontend2
       dockerfile: Dockerfile
     container_name: mhealth-frontend
     ports:
-      - "3000:80"
+      - "443:443"    # HTTPS only
     environment:
-      - VITE_API_BASE_URL=http://10.0.62.206:8000
+      # API URL is dynamically determined by client-side code
+      # This allows access via both IP and domain name
+      - NODE_ENV=production
+    volumes:
+      # Mount SSL certificates from host
+      - ./backend/ssl:/etc/nginx/ssl:ro
     depends_on:
       - backend-api
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://10.0.62.206/"]
+      test: ["CMD", "curl", "-f", "-k", "https://localhost/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -170,8 +182,8 @@ services:
     image: dpage/pgadmin4:latest
     container_name: mhealth-pgadmin
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin123}
       PGADMIN_CONFIG_SERVER_MODE: 'False'
     ports:
       - "127.0.0.1:5050:80"
@@ -195,3 +207,8 @@ volumes:
 networks:
   mhealth-network:
     driver: bridge
+
+include:
+  # Twilio standalone stack (own PostgreSQL + RabbitMQ)
+  - path: twilio_service/docker-compose.yml
+    env_file: twilio_service/.env

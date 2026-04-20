@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum, Text, UniqueConstraint
+from sqlalchemy import Column, Float, Integer, String, DateTime, ForeignKey, Enum, Text, UniqueConstraint
 from sqlalchemy.orm import relationship 
 from datetime import datetime , timezone 
 from app.sql_db import Base  
@@ -59,7 +59,8 @@ class Calls(Base):
     Emotion_Id = Column(String(10), ForeignKey('Emotions.Emotion_Id'), nullable=True) 
     Status = Column(CALL_STATUS_ENUM)
     Duration = Column(Integer)
-    Recording_Url = Column(String(512), nullable=True) 
+    Recording_Url = Column(String(512), nullable=True)
+    Analysis_Score = Column(Float, nullable=True)
 
     # Relationships 
     target = relationship("Targets", back_populates="calls")
