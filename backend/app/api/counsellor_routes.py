@@ -22,8 +22,6 @@ from app.config import (
     MINIO_ACCESS_KEY,
     MINIO_SECRET_KEY,
     CONTAINER_NAME,
-    EXOTEL_API_KEY,
-    EXOTEL_API_TOKEN,
 )
 
 router = APIRouter(prefix="/api/counsellor", tags=["Counsellor"])
@@ -122,17 +120,14 @@ def _make_inline_disposition(filename: str) -> str:
     return f'inline; filename="{safe_name}"'
 
 
-async def _proxy_exotel_recording(recording_url: str) -> Response:
+async def _proxy_remote_recording(recording_url: str) -> Response:
     if not recording_url:
         raise HTTPException(status_code=404, detail="Recording not available")
-    if not (EXOTEL_API_KEY and EXOTEL_API_TOKEN):
-        raise HTTPException(status_code=500, detail="Exotel credentials are not configured")
 
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.get(
                 recording_url,
-                auth=(EXOTEL_API_KEY, EXOTEL_API_TOKEN),
                 follow_redirects=True,
             )
             resp.raise_for_status()
@@ -144,14 +139,14 @@ async def _proxy_exotel_recording(recording_url: str) -> Response:
                 headers={"Content-Disposition": _make_inline_disposition(filename)},
             )
     except httpx.HTTPStatusError as exc:
-        logger.exception("Exotel recording fetch failed: %s", exc)
+        logger.exception("Remote recording fetch failed: %s", exc)
         raise HTTPException(
             status_code=exc.response.status_code,
-            detail="Unable to fetch recording from Exotel",
+            detail="Unable to fetch recording",
         )
     except Exception:
-        logger.exception("Unexpected error while fetching recording from Exotel")
-        raise HTTPException(status_code=502, detail="Unable to fetch recording from Exotel")
+        logger.exception("Unexpected error while fetching remote recording")
+        raise HTTPException(status_code=502, detail="Unable to fetch recording")
 
 
 # ---------------------------
@@ -482,7 +477,7 @@ def get_live_calls(limit: int = Query(10, ge=1, le=50), db: Session = Depends(ge
 
 @router.get("/recordings/{call_id}")
 async def stream_call_recording(call_id: str, db: Session = Depends(get_db)):
-    """Stream a call recording via MinIO or directly from Exotel."""
+    """Stream a call recording from MinIO or Twilio."""
     try:
         call_uuid = uuid.UUID(call_id)
     except ValueError:
@@ -516,8 +511,8 @@ async def stream_call_recording(call_id: str, db: Session = Depends(get_db)):
             headers={"Content-Disposition": _make_inline_disposition(filename)},
         )
 
-    # Default to server-side download from Exotel
-    return await _proxy_exotel_recording(recording_url)
+    # Default to server-side proxy fetch for any non-MinIO URL.
+    return await _proxy_remote_recording(recording_url)
 
 
 @router.get("/recordings/by-sid/{call_sid}")
@@ -629,17 +624,13 @@ def get_filter_options(db: Session = Depends(get_db)):
     """
     try:
         departments = db.query(Targets.Department_Name).distinct().order_by(Targets.Department_Name).all()
-        batches = db.query(Targets.Batch).distinct().order_by(Targets.Batch).all()
-        semesters = db.query(Targets.Semester).distinct().order_by(Targets.Semester).all()
         emotions = db.query(Emotions.Emotion).distinct().order_by(Emotions.Emotion).all()
         statuses = db.query(Calls.Status).distinct().all()
-        
+
         return {
             "departments": [d[0] for d in departments if d[0]],
-            "batches": [b[0] for b in batches if b[0]],
-            "semesters": [s[0] for s in semesters if s[0]],
             "emotions": [e[0] for e in emotions if e[0]],
-            "statuses": [s[0] for s in statuses if s[0]]
+            "statuses": [s[0] for s in statuses if s[0]],
         }
     except Exception as e:
         logger.exception("Error fetching filter options")

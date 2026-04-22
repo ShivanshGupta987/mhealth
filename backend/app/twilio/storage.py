@@ -14,7 +14,7 @@ import requests
 from minio import Minio
 from minio.error import S3Error
 
-from app.config import (
+from app.twilio.config import (
 	MINIO_ACCESS_KEY,
 	MINIO_BUCKET,
 	MINIO_ENDPOINT,

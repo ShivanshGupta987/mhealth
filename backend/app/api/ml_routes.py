@@ -4,51 +4,33 @@ from app.ml_client import get_ml_client
 router = APIRouter(prefix="/api/ml", tags=["ml"])
 
 
-@router.post("/sentiment")
-async def predict_sentiment(file: UploadFile = File(...)):
-    """
-    Analyze audio sentiment by forwarding to ML microservice.
-    
-    This endpoint acts as a proxy to the separate ML service.
-    """
+@router.post("/depression")
+async def predict_depression(file: UploadFile = File(...), threshold: float = 0.5):
+    """Proxy: predict depression risk from an audio file via the ML microservice."""
     if not file:
         raise HTTPException(status_code=400, detail="No file uploaded")
     try:
         audio_bytes = await file.read()
         ml_client = get_ml_client()
-        result = await ml_client.predict_sentiment(audio_bytes, file.filename or "audio.mp3")
+        result = ml_client.predict_depression_from_bytes(audio_bytes, threshold=threshold)
+        if result is None:
+            raise HTTPException(status_code=503, detail="ML service unavailable or prediction failed")
         return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"ML service error: {str(e)}")
-
-
-@router.post("/emotion")
-async def predict_emotion(file: UploadFile = File(...)):
-    """
-    Classify emotion by forwarding to ML microservice.
-    
-    Uses the legacy sklearn-based model.
-    """
-    if not file:
-        raise HTTPException(status_code=400, detail="No file uploaded")
-    try:
-        audio_bytes = await file.read()
-        ml_client = get_ml_client()
-        result = await ml_client.predict_emotion(audio_bytes, file.filename or "audio.mp3")
-        return result
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ML service error: {str(e)}")
 
 
 @router.get("/health")
 async def ml_service_health():
-    """
-    Check ML service health status.
-    """
+    """Check ML service health status."""
     try:
         ml_client = get_ml_client()
-        health_status = await ml_client.health_check()
-        return health_status
+        is_healthy = ml_client.health_check()
+        if is_healthy:
+            return {"status": "healthy", "service": "ml-service"}
+        return {"status": "unhealthy", "service": "ml-service"}
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"ML service unavailable: {str(e)}")
 

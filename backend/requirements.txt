@@ -1,43 +1,33 @@
-# requirements.txt
-
-# Core FastAPI/ASGI Framework
+# Web framework
 fastapi[standard]
 uvicorn
 
-# Database Stack (PostgreSQL + SQLAlchemy ORM)
+# Database
 sqlalchemy
-psycopg2-binary  # PostgreSQL adapter
-
-# Asynchronous Task Queue
-celery
-redis           # Recommended for Celery results backend/rate limiting (if needed)
-rabbitmq        # Primary message broker (if using RabbitMQ)
-
-# Utility and Configuration
-python-dotenv   # For loading environment variables (.env file)
-pytz            # For timezone handling (IST)
-uuid            # Standard library, but good for tracking
-
-# External Services/APIs
-twilio          # For call initiation and webhooks
-httpx           # Async HTTP client for downloading recordings
-
-# Storage
-minio           # Client for MinIO/S3 object storage
-
-# Optional: For Authentication/Security (though removed from main logic, kept for project context)
-python-jose
-passlib         # For password hashing (if Admin interface is added later)
-
-# alembic for managing postgresql database migrations
+psycopg2-binary
 alembic
 
-# Audio processing (lightweight - only for feature extraction in Celery tasks if needed)
-# NOTE: Heavy ML models (torch, transformers) moved to separate ml-service
+# Task queue
+celery
+
+# Utilities
+python-dotenv
+pytz
+
+# Auth
+python-jose
+passlib
+
+# External services
+twilio
+httpx
+requests
+
+# Storage
+minio
+
+# Audio processing (used in Celery tasks for combining recordings before ML analysis)
 librosa
 soundfile
-pydub
-
-# Legacy ML for backward compatibility (can be removed if fully migrated to ml-service)
-scikit-learn
-joblib
+scipy
+numpy

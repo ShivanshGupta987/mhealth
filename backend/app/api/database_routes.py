@@ -448,7 +448,7 @@ def delete_flagged_target(flag_id: str, db: Session = Depends(get_db)):
 @router.post("/schedule_calls")
 def schedule_calls_trigger():
     try:
-        from app.celery_config_exotel import initiate_calls_for_all_targets
+        from app.twilio.celery_config_twilio import initiate_calls_for_all_targets
         initiate_calls_for_all_targets.delay()
         return {"message": "Scheduled call initiation task"}
     except Exception as e:

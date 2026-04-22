@@ -1,26 +1,26 @@
-﻿"""main.py - FastAPI application for the Twilio voice call flow service.
+"""main.py - FastAPI application for the Twilio voice call flow service.
 
 Call flow overview
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-1.  Celery task calls Twilio API â†’ outbound call placed.
-    The call's `url`             â†’ POST /voice/answer
-    The call's `status_callback` â†’ POST /voice/status
+──────────────────
+1.  Celery task calls Twilio API → outbound call placed.
+    The call's `url`             → POST /voice/answer
+    The call's `status_callback` → POST /voice/status
 
-2.  Callee picks up â†’ Twilio POSTs to /voice/answer
-    â†’ App returns TwiML for Question 0.
+2.  Callee picks up → Twilio POSTs to /voice/answer
+    → App returns TwiML for Question 0.
 
 3.  Depending on question type:
-    â€¢ gather (DTMF) â†’ <Gather action="/voice/respond/0"> â€¦ </Gather>
-    â€¢ record (voice) â†’ <Record action="/voice/respond/0" â€¦/>
+    • gather (DTMF) → <Gather action="/voice/respond/0"> … </Gather>
+    • record (voice) → <Record action="/voice/respond/0" …/>
 
 4.  After input Twilio POSTs to POST /voice/respond/{q_index}
-    â†’ App stores the response, returns TwiML for next question or closes call.
+    → App stores the response, returns TwiML for next question or closes call.
 
 5.  Twilio posts lifecycle events to POST /voice/status
-    â†’ App updates TwilioCalls.Status accordingly.
+    → App updates TwilioCalls.Status accordingly.
 
 Security
-â”€â”€â”€â”€â”€â”€â”€â”€
+────────
 Every incoming Twilio webhook is validated via X-Twilio-Signature
 (twilio.request_validator.RequestValidator).
 """
@@ -38,16 +38,16 @@ from sqlalchemy.orm import Session
 from twilio.request_validator import RequestValidator
 from twilio.twiml.voice_response import Gather, VoiceResponse
 
-from app.config import APP_HOST, TWILIO_AUTH_TOKEN
-from app.models import Targets, TwilioCalls, TwilioResponses
-from app.question_flow import (
+from app.twilio.config import APP_HOST, TWILIO_AUTH_TOKEN
+from app.twilio.models import TwilioTargets, TwilioCalls, TwilioResponses
+from app.twilio.question_flow import (
     CLOSING_MESSAGE,
     NO_INPUT_MESSAGE,
     TOTAL_QUESTIONS,
     get_question,
     is_last_question,
 )
-from app.schemas import (
+from app.twilio.schemas import (
     BulkInitiateCallRequest,
     InitiateCallRequest,
     InitiateCallResponse,
@@ -56,8 +56,8 @@ from app.schemas import (
     TwilioCallOut,
     TwilioResponseOut,
 )
-from app.sql_db import get_db
-from app.storage import recording_playback_url
+from app.twilio.sql_db import get_db
+from app.twilio.storage import recording_playback_url
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -164,17 +164,17 @@ def health():
 
 
 # ===========================================================================
-# Targets â€” CRUD
+# TwilioTargets CRUD
 # ===========================================================================
 
 @app.post("/targets", response_model=TargetOut, status_code=201, tags=["Targets"])
 def create_target(body: TargetCreate, db: Session = Depends(get_db)):
     """Add a new call target."""
-    existing = db.query(Targets).filter(Targets.Phone_No == body.phone_no).first()
+    existing = db.query(TwilioTargets).filter(TwilioTargets.Phone_No == body.phone_no).first()
     if existing:
         raise HTTPException(status_code=409, detail="A target with this phone number already exists")
 
-    target = Targets(
+    target = TwilioTargets(
         Name=body.name,
         Phone_No=body.phone_no,
         Roll_No=body.roll_no,
@@ -190,12 +190,12 @@ def create_target(body: TargetCreate, db: Session = Depends(get_db)):
 @app.get("/targets", response_model=List[TargetOut], tags=["Targets"])
 def list_targets(db: Session = Depends(get_db)):
     """List all targets."""
-    return [_target_to_schema(t) for t in db.query(Targets).order_by(Targets.Created_At.desc()).all()]
+    return [_target_to_schema(t) for t in db.query(TwilioTargets).order_by(TwilioTargets.Created_At.desc()).all()]
 
 
 @app.get("/targets/{target_id}", response_model=TargetOut, tags=["Targets"])
 def get_target(target_id: uuid.UUID, db: Session = Depends(get_db)):
-    target = db.query(Targets).filter(Targets.Target_Id == target_id).first()
+    target = db.query(TwilioTargets).filter(TwilioTargets.Target_Id == target_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="Target not found")
     return _target_to_schema(target)
@@ -204,14 +204,14 @@ def get_target(target_id: uuid.UUID, db: Session = Depends(get_db)):
 @app.delete("/targets/{target_id}", status_code=204, tags=["Targets"])
 def delete_target(target_id: uuid.UUID, db: Session = Depends(get_db)):
     """Hard-delete a target record."""
-    target = db.query(Targets).filter(Targets.Target_Id == target_id).first()
+    target = db.query(TwilioTargets).filter(TwilioTargets.Target_Id == target_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="Target not found")
     db.delete(target)
     db.commit()
 
 
-def _target_to_schema(t: Targets) -> TargetOut:
+def _target_to_schema(t: TwilioTargets) -> TargetOut:
     return TargetOut(
         target_id=t.Target_Id,
         name=t.Name,
@@ -442,9 +442,9 @@ async def voice_status(
 )
 def initiate_call(body: InitiateCallRequest, db: Session = Depends(get_db)):
     """Trigger an outbound Twilio call for a single target."""
-    from app.celery_config_twilio import initiate_twilio_call_task
+    from app.twilio.celery_config_twilio import initiate_twilio_call_task
 
-    target = db.query(Targets).filter(Targets.Target_Id == body.target_id).first()
+    target = db.query(TwilioTargets).filter(TwilioTargets.Target_Id == body.target_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="Target not found")
     if not target.Phone_No:
@@ -477,12 +477,12 @@ def initiate_call(body: InitiateCallRequest, db: Session = Depends(get_db)):
 @app.post("/calls/initiate-bulk", status_code=202, tags=["Admin"])
 def initiate_bulk_calls(body: BulkInitiateCallRequest, db: Session = Depends(get_db)):
     """Trigger outbound calls for multiple targets."""
-    from app.celery_config_twilio import initiate_twilio_call_task
+    from app.twilio.celery_config_twilio import initiate_twilio_call_task
 
     dispatched, skipped = [], []
 
     for tid in body.target_ids:
-        target = db.query(Targets).filter(Targets.Target_Id == tid).first()
+        target = db.query(TwilioTargets).filter(TwilioTargets.Target_Id == tid).first()
         if not target or not target.Phone_No:
             skipped.append(str(tid))
             continue
@@ -515,7 +515,7 @@ def initiate_bulk_calls(body: BulkInitiateCallRequest, db: Session = Depends(get
 @app.get("/targets/{target_id}/calls", response_model=List[TwilioCallOut], tags=["Admin"])
 def list_calls_for_target(target_id: uuid.UUID, db: Session = Depends(get_db)):
     """Return all calls for a target, newest first."""
-    target = db.query(Targets).filter(Targets.Target_Id == target_id).first()
+    target = db.query(TwilioTargets).filter(TwilioTargets.Target_Id == target_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="Target not found")
     calls = (
@@ -627,7 +627,7 @@ def delete_call(call_id: uuid.UUID, db: Session = Depends(get_db)):
 @app.get("/responses", response_model=List[TwilioResponseOut], tags=["Admin"])
 def list_all_responses(db: Session = Depends(get_db)):
     """Return every response record, newest first."""
-    from app.models import TwilioResponses
+    from app.twilio.models import TwilioResponses
     rows = db.query(TwilioResponses).order_by(TwilioResponses.Responded_At.desc()).all()
     return [
         TwilioResponseOut(
@@ -653,7 +653,7 @@ def list_all_responses(db: Session = Depends(get_db)):
 @app.delete("/responses/{response_id}", status_code=204, tags=["Admin"])
 def delete_response(response_id: uuid.UUID, db: Session = Depends(get_db)):
     """Hard-delete a single response record."""
-    from app.models import TwilioResponses
+    from app.twilio.models import TwilioResponses
     row = db.query(TwilioResponses).filter(TwilioResponses.Response_Id == response_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Response not found")
@@ -714,7 +714,7 @@ def get_call(call_id: uuid.UUID, db: Session = Depends(get_db)):
 
 def _trigger_call_recording_archival(call_id: str):
     """Dispatch Celery fan-out task to archive all call recordings to MinIO."""
-    from app.celery_config_twilio import archive_call_recordings_task
+    from app.twilio.celery_config_twilio import archive_call_recordings_task
 
     logger.info("Triggering archival for call %s", call_id)
     result = archive_call_recordings_task.delay(call_id=call_id)
@@ -723,7 +723,7 @@ def _trigger_call_recording_archival(call_id: str):
 
 def _trigger_depression_analysis(call_id: str):
     """Dispatch Celery task to analyze call for depression risk by combining all responses."""
-    from app.celery_config_twilio import analyze_call_depression_risk_task
+    from app.twilio.celery_config_twilio import analyze_call_depression_risk_task
 
     logger.info("Triggering depression risk analysis for call %s", call_id)
     result = analyze_call_depression_risk_task.delay(call_id=call_id)

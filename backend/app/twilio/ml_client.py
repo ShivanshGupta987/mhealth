@@ -7,7 +7,7 @@ from call audio recordings.
 import logging
 import httpx
 from typing import Optional, Dict, Any
-from app.config import ML_SERVICE_URL
+from app.twilio.config import ML_SERVICE_URL
 
 logger = logging.getLogger(__name__)
 

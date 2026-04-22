@@ -1,33 +1,17 @@
-"""config.py - Loads configuration from twilio_service's own .env file.
+"""Configuration for Twilio flows running inside backend service."""
 
-This service is fully standalone. It does NOT share .env or the database
-with any other service in the project.
-"""
 import os
-from dotenv import load_dotenv
-
-_here = os.path.dirname(os.path.abspath(__file__))
-_service_root = os.path.dirname(_here)   # twilio_service/
-
-# Only load from the service's own .env — no fallback to parent dirs
-_dotenv_path = os.path.join(_service_root, ".env")
-if os.path.exists(_dotenv_path):
-    load_dotenv(_dotenv_path)
 
 # ── Twilio ────────────────────────────────────────────────────────────────────
 TWILIO_ACCOUNT_SID: str = os.getenv("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN: str = os.getenv("TWILIO_AUTH_TOKEN", "")
 TWILIO_PHONE_NUMBER: str = os.getenv("TWILIO_PHONE_NUMBER", "")
 
-# ── Database (service-local PostgreSQL) ───────────────────────────────────────
+# ── Database (shared PostgreSQL supported) ───────────────────────────────────
 POSTGRES_DB_URL: str = os.getenv(
     "POSTGRES_DB_URL",
-    "postgresql://twilio_user:twilio_pass@localhost:5433/mhealthDB",
+    "postgresql://postgres:password@postgres:5432/mhealthDB",
 )
-
-# PostgreSQL schema used by twilio_service when sharing a single database
-# with other services (e.g., backend in public schema).
-TWILIO_DB_SCHEMA: str = os.getenv("TWILIO_DB_SCHEMA", "twilio")
 
 # ── Public hostname for Twilio callback URLs ──────────────────────────────────
 # No scheme, no trailing slash. e.g. "mhealth.iitgn.ac.in" or "abc.ngrok-free.app"
@@ -37,8 +21,8 @@ APP_HOST: str = os.getenv("APP_HOST", "localhost")
 TWILIO_SERVICE_HOST: str = os.getenv("TWILIO_SERVICE_HOST", "0.0.0.0")
 TWILIO_SERVICE_PORT: int = int(os.getenv("TWILIO_SERVICE_PORT", "8002"))
 
-# ── Celery / RabbitMQ (service-local) ─────────────────────────────────────────
-RABBITMQ_URL: str = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672//")
+# ── Celery / RabbitMQ ─────────────────────────────────────────────────────────
+RABBITMQ_URL: str = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672//")
 
 # ── Call management ───────────────────────────────────────────────────────────
 RETRY_DELAY_MINUTES: int = int(os.getenv("RETRY_DELAY_MINUTES", "5"))
@@ -53,7 +37,10 @@ ML_SERVICE_TIMEOUT: int = int(os.getenv("ML_SERVICE_TIMEOUT", "30"))
 MINIO_ENDPOINT: str = os.getenv("MINIO_ENDPOINT", "")
 MINIO_ACCESS_KEY: str = os.getenv("MINIO_ACCESS_KEY", "")
 MINIO_SECRET_KEY: str = os.getenv("MINIO_SECRET_KEY", "")
-MINIO_BUCKET: str = os.getenv("MINIO_BUCKET", "twilio-recordings")
+MINIO_BUCKET: str = os.getenv(
+    "MINIO_BUCKET",
+    os.getenv("CONTAINER_NAME", "twilio-recordings"),
+)
 
 # Optional public base URL for generated recording links.
 # Example: "https://minio.example.com" or "http://localhost:9000"

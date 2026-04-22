@@ -10,7 +10,7 @@ const RootInfoSchema = z
 const ConfigCheckSchema = z
   .object({
     minio_connected: z.boolean().optional(),
-    exotel_sid: z.string().nullable().optional(),
+    twilio_account_sid: z.string().nullable().optional(),
     webhook_urls: z.record(z.string(), z.string()).optional(),
   })
   .passthrough();

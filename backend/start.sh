@@ -29,7 +29,7 @@ if [ "${SERVICE_TYPE}" = "api" ]; then
     run_migrations
     
     echo "Starting FastAPI server on port 8000..."
-    exec uvicorn app.main_exotel:app --host 0.0.0.0 --port 8000
+    exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips "${FORWARDED_ALLOW_IPS:-*}"
 
 # If Celery worker, wait for DB (no migrations needed)
 elif [ "${SERVICE_TYPE}" = "celery_worker" ]; then
@@ -44,13 +44,18 @@ elif [ "${SERVICE_TYPE}" = "celery_worker" ]; then
     echo "✓ Backend API is ready!"
     
     echo "Starting Celery worker..."
-    exec celery -A app.celery_config_exotel worker -l info
+    exec celery -A app.twilio.celery_config_twilio.celery_app worker -l info
+
+elif [ "${SERVICE_TYPE}" = "celery_beat" ]; then
+    wait_for_postgres
+    echo "Starting Celery beat..."
+    exec celery -A app.twilio.celery_config_twilio.celery_app beat -l info
 
 # Default: API service
 else
     wait_for_postgres
     run_migrations
-    
+
     echo "Starting FastAPI server on port 8000 (default)..."
-    exec uvicorn app.main_exotel:app --host 0.0.0.0 --port 8000
+    exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips "${FORWARDED_ALLOW_IPS:-*}"
 fi

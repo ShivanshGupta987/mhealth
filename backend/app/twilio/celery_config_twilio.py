@@ -32,7 +32,7 @@ from celery.exceptions import Retry
 from celery.schedules import crontab
 from sqlalchemy import and_
 
-from app.config import (
+from app.twilio.config import (
     APP_HOST,
     RABBITMQ_URL,
     RETRY_DELAY_MINUTES,
@@ -40,10 +40,11 @@ from app.config import (
     TWILIO_AUTH_TOKEN,
     TWILIO_PHONE_NUMBER,
 )
-from app.models import Targets, TwilioCalls, TwilioResponses
-from app.ml_client import get_client as get_ml_client
-from app.sql_db import get_db_session_cm
-from app.storage import archive_twilio_recording
+from app.twilio.models import TwilioTargets, TwilioCalls, TwilioResponses
+from app.twilio.ml_client import get_client as get_ml_client
+from app.twilio.question_flow import TOTAL_QUESTIONS
+from app.twilio.sql_db import get_db_session_cm
+from app.twilio.storage import archive_twilio_recording
 
 logging.basicConfig(
     level=logging.INFO,
@@ -71,7 +72,7 @@ celery_app.conf.update(
     beat_schedule={
         # Runs every Wednesday at 10:00 AM IST — adjust as needed
         # "twilio-weekly-calls": {
-        #     "task": "app.celery_config_twilio.initiate_calls_for_all_targets",
+        #     "task": "app.twilio.celery_config_twilio.initiate_calls_for_all_targets",
         #     "schedule": crontab(day_of_week="wednesday", hour=10, minute=0),
         # },
     },
@@ -103,7 +104,7 @@ def _normalize_e164(phone: str) -> str:
 # Task: Initiate a single outbound call
 # ---------------------------------------------------------------------------
 
-@celery_app.task(bind=True, max_retries=3, name="app.celery_config_twilio.initiate_twilio_call_task")
+@celery_app.task(bind=True, max_retries=3, name="app.twilio.celery_config_twilio.initiate_twilio_call_task")
 def initiate_twilio_call_task(self, target_id: str, phone_number: str, call_id: str):
     """
     Place an outbound call to *phone_number* via the Twilio REST API.
@@ -179,7 +180,7 @@ def initiate_twilio_call_task(self, target_id: str, phone_number: str, call_id: 
 @celery_app.task(
     bind=True,
     max_retries=1,
-    name="app.celery_config_twilio.archive_call_recordings_task",
+    name="app.twilio.celery_config_twilio.archive_call_recordings_task",
 )
 def archive_call_recordings_task(self, call_id: str):
     """Fan out one archival job per voice response for a call."""
@@ -303,7 +304,7 @@ def _update_total_response_duration(call_id, db):
 @celery_app.task(
     bind=True,
     max_retries=2,
-    name="app.celery_config_twilio.archive_response_recording_task",
+    name="app.twilio.celery_config_twilio.archive_response_recording_task",
 )
 def archive_response_recording_task(self, call_id: str, response_id: str):
     """Archive one Twilio recording to MinIO and extract actual duration."""
@@ -410,7 +411,7 @@ def archive_response_recording_task(self, call_id: str, response_id: str):
 @celery_app.task(
     bind=True,
     max_retries=3,
-    name="app.celery_config_twilio.analyze_call_depression_risk_task",
+    name="app.twilio.celery_config_twilio.analyze_call_depression_risk_task",
 )
 def analyze_call_depression_risk_task(self, call_id: str):
     """
@@ -660,7 +661,7 @@ def analyze_call_depression_risk_task(self, call_id: str):
                     exc,
                 )
                 raise self.retry(exc=exc, countdown=30)
-                
+
     except Retry:
         raise
     except Exception as exc:
@@ -671,3 +672,69 @@ def analyze_call_depression_risk_task(self, call_id: str):
             exc_info=True,
         )
         raise self.retry(exc=exc, countdown=30)
+
+
+# ---------------------------------------------------------------------------
+# Task: Initiate calls for all eligible targets (Celery Beat periodic task)
+# ---------------------------------------------------------------------------
+
+@celery_app.task(
+    bind=True,
+    name="app.twilio.celery_config_twilio.initiate_calls_for_all_targets",
+)
+def initiate_calls_for_all_targets(self):
+    """Initiate outbound calls for all targets not yet called in the past 7 days.
+
+    Intended to be scheduled via Celery Beat (e.g., every Wednesday at 10 AM IST).
+    Can also be triggered manually via the admin API.
+    """
+    logger.info("Starting bulk call initiation for all eligible targets")
+
+    dispatched = 0
+    skipped = 0
+    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+
+    with get_db_session_cm() as db:
+        targets = db.query(TwilioTargets).filter(TwilioTargets.Phone_No.isnot(None)).all()
+
+        for target in targets:
+            if not target.Phone_No:
+                skipped += 1
+                continue
+
+            recent = (
+                db.query(TwilioCalls)
+                .filter(
+                    TwilioCalls.Target_Id == target.Target_Id,
+                    TwilioCalls.Scheduled_Time >= cutoff,
+                )
+                .first()
+            )
+            if recent:
+                skipped += 1
+                continue
+
+            call_record = TwilioCalls(
+                Target_Id=target.Target_Id,
+                Scheduled_Time=datetime.now(timezone.utc),
+                Status="Call Scheduled",
+                Total_Questions=TOTAL_QUESTIONS,
+                Questions_Answered=0,
+            )
+            db.add(call_record)
+            db.commit()
+            db.refresh(call_record)
+
+            initiate_twilio_call_task.delay(
+                target_id=str(target.Target_Id),
+                phone_number=target.Phone_No,
+                call_id=str(call_record.Call_Id),
+            )
+            dispatched += 1
+
+    logger.info(
+        "Bulk call initiation complete: %d dispatched, %d skipped",
+        dispatched,
+        skipped,
+    )
+    return {"dispatched": dispatched, "skipped": skipped}

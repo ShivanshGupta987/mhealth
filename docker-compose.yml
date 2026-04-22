@@ -4,7 +4,6 @@ version: '3.8'
 #
 # Usage:
 #   cp backend/.env.example backend/.env
-#   cp twilio_service/.env.example twilio_service/.env
 #   docker compose up -d
 
 services:
@@ -79,10 +78,7 @@ services:
       - backend/.env
     environment:
       - SERVICE_TYPE=api
-      - POSTGRES_DB_URL=${POSTGRES_DB_URL:-postgresql://postgres:password@postgres:5432/mhealthDB}
-      - RABBITMQ_URL=${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672//}
-      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio:9000}
-      - ML_SERVICE_URL=${ML_SERVICE_URL:-http://ml-service:8001}
+      - FORWARDED_ALLOW_IPS=*
     ports:
       - "8000:8000"
     volumes:
@@ -112,10 +108,6 @@ services:
       - backend/.env
     environment:
       - SERVICE_TYPE=celery_worker
-      - POSTGRES_DB_URL=${POSTGRES_DB_URL:-postgresql://postgres:password@postgres:5432/mhealthDB}
-      - RABBITMQ_URL=${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672//}
-      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio:9000}
-      - ML_SERVICE_URL=${ML_SERVICE_URL:-http://ml-service:8001}
     volumes:
       - ./backend/app:/app/app
     depends_on:
@@ -127,12 +119,34 @@ services:
       - mhealth-network
     restart: unless-stopped
 
-  # ML Service (Sentiment & Emotion Analysis)
+  # Backend Celery Beat (Periodic Task Scheduler)
+  backend-celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mhealth-backend-celery-beat
+    env_file:
+      - backend/.env
+    environment:
+      - SERVICE_TYPE=celery_beat
+    volumes:
+      - ./backend/app:/app/app
+    depends_on:
+      - postgres
+      - rabbitmq
+      - backend-api
+    networks:
+      - mhealth-network
+    restart: unless-stopped
+
+  # ML Service (Depression Risk Prediction)
   ml-service:
     build:
       context: ./ml-service
       dockerfile: Dockerfile
     container_name: mhealth-ml-service
+    env_file:
+      - ml-service/.env
     ports:
       - "127.0.0.1:8001:8001"
     volumes:
@@ -140,9 +154,9 @@ services:
     environment:
       - ML_SERVICE_HOST=0.0.0.0
       - ML_SERVICE_PORT=8001
-      - SENTIMENT_MODEL_PATH=/app/model_store/best_model_state_legacy.pth
+      - DEPRESSION_MODEL_PATH=/app/model_store/random_forest_model.pkl
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8001/health')"]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -193,6 +207,7 @@ services:
       - postgres
     networks:
       - mhealth-network
+    restart: unless-stopped
 
 volumes:
   postgres_data:
@@ -207,8 +222,3 @@ volumes:
 networks:
   mhealth-network:
     driver: bridge
-
-include:
-  # Twilio standalone stack (own PostgreSQL + RabbitMQ)
-  - path: twilio_service/docker-compose.yml
-    env_file: twilio_service/.env

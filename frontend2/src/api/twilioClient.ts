@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-// In production: nginx proxies /twilio/* → twilio-service:8002/*
+// In production: nginx proxies /twilio/* -> backend-api:8000/twilio/*
 // In dev:        vite proxy does the same via vite.config.ts server.proxy
 const getTwilioBaseURL = () => {
   if (import.meta.env.VITE_TWILIO_API_URL) {

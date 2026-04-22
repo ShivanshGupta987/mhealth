@@ -22,23 +22,18 @@ import { fetchConfigInfo, fetchRootInfo } from '../api/systemHealth';
 import MaterialGrid from '@mui/material/Grid';
 const Grid = MaterialGrid as any;
 
-function formatBool(value?: boolean) {
-  if (value === undefined) return 'Unknown';
-  return value ? 'Online' : 'Check';
-}
-
 export default function SystemHealthPage() {
   const rootQuery = useQuery({ queryKey: ['system-root'], queryFn: fetchRootInfo });
   const configQuery = useQuery({ queryKey: ['system-config'], queryFn: fetchConfigInfo });
 
   const apiStatusOk = Boolean(rootQuery.data && rootQuery.data.status === 'operational');
   const minioOk = Boolean(configQuery.data?.minio_connected);
-  const exotelConfigured = Boolean(configQuery.data?.exotel_sid && configQuery.data?.exotel_sid !== 'NOT SET');
+  const twilioConfigured = Boolean(configQuery.data?.twilio_account_sid && configQuery.data?.twilio_account_sid !== 'NOT SET');
   const webhooksReady = Boolean(configQuery.data?.webhook_urls && Object.keys(configQuery.data.webhook_urls).length > 0);
 
   return (
     <Box>
-      <PageHeader title="Admin Dashboard" subtitle="Monitor API availability, storage, and Exotel configuration." />
+      <PageHeader title="Admin Dashboard" subtitle="Monitor API availability, storage, and Twilio configuration." />
 
       <Card 
         sx={{ 
@@ -102,10 +97,10 @@ export default function SystemHealthPage() {
           </Grid>
           <Grid xs={12} md={3}>
             <StatCard 
-              label="Exotel SID" 
-              value={exotelConfigured ? 'Configured' : 'Not Set'} 
+              label="Twilio SID" 
+              value={twilioConfigured ? 'Configured' : 'Not Set'} 
               helperText="Credentials configured" 
-              status={exotelConfigured ? 'online' : 'warning'}
+              status={twilioConfigured ? 'online' : 'warning'}
             />
           </Grid>
           <Grid xs={12} md={3}>

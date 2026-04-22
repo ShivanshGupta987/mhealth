@@ -187,7 +187,7 @@ def list_emotions(db: Session = Depends(get_db)):
 def schedule_calls():
     try:
         # uses celery task
-        from app.celery_config_exotel import initiate_calls_for_all_targets
+        from app.twilio.celery_config_twilio import initiate_calls_for_all_targets
         initiate_calls_for_all_targets.delay()
         return {"ok": True}
     except Exception as e:

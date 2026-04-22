@@ -14,9 +14,9 @@ IST = pytz.timezone('Asia/Kolkata')
 # Enum for Calls.Status
 CALL_STATUS_ENUM = Enum(
     "Call Scheduled",    # 1: Initial status when scheduling
-    "failed",            # 2: Exotel status from status_callback
-    "busy",              # 3: Exotel status from status_callback
-    "no-answer",         # 4: Exotel status from status_callback
+    "failed",            # 2: provider failure callback status
+    "busy",              # 3: provider busy callback status
+    "no-answer",         # 4: provider no-answer callback status
     "Message Not Conveyed",                # 5: Passthru, completed but no recording
     "Message Conveyed But Not Processed",  # 6: Passthru, completed with recording, before emotion
     "Message Conveyed And Processed",      # 7: After emotion processing

@@ -20,7 +20,7 @@ def get_password_hash(pw: str) -> str:
 def main():
     # CHANGE THESE to your desired admin credentials
     email = "m.health@iitgn.ac.in"
-    raw_password = "admin"
+    raw_password = "admin123"
 
     engine = create_engine(POSTGRES_DB_URL)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
