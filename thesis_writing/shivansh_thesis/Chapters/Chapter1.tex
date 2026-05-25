@@ -1,0 +1,71 @@
+\chapter{Introduction}
+\label{Chapter1}
+
+\section{Background and Motivation}
+
+Mental health has emerged as one of the defining public health challenges of the twenty-first century. Depression, in particular, affects over 280 million adults worldwide~\cite{WHO2025} and is among the leading causes of disability globally. While this crisis spans all demographics, university and college students are disproportionately affected. In 2023, 76\% of college students reported experiencing moderate to severe psychological distress~\cite{BlackDeer2023}, and the prevalence of mental health difficulties among undergraduate students has nearly tripled in recent years~\cite{KCL2022}. The mental health crisis in higher education is driven by a confluence of stressors including academic pressure, career uncertainty, placement anxiety, peer pressure, financial concerns, and weakened social support networks~\cite{Mortier2018}.
+
+Despite the severity of this crisis, institutional responses remain inadequate. Counselling centres in universities are typically under-resourced relative to demand, and students frequently face long waiting times before receiving professional attention. Compounding this is the pervasive stigma associated with seeking mental health support, which discourages many students from ever approaching a counsellor. The result is a significant gap between the need for mental health support and actual service delivery.
+
+Traditional diagnostic approaches, such as structured clinical interviews and self-report questionnaires like the Patient Health Questionnaire (PHQ)~\cite{Kroenke2010}, are valuable but face inherent limitations when deployed at scale. They are time-consuming, require trained clinicians to administer, and depend on the willingness of the individual to self-disclose — a significant barrier given the stigma associated with mental health. There is therefore a pressing need for \textit{scalable}, \textit{non-invasive}, and \textit{interpretable} tools that can assist counsellors in proactively identifying students who may be at risk.
+
+Speech has emerged as a particularly promising biomarker for mental health screening. Research in psycholinguistics and clinical speech science has demonstrated that depression produces measurable changes in vocal acoustics, including alterations in pitch, speaking rate, pause patterns, voice quality (jitter and shimmer), fundamental frequency, and the harmonics-to-noise ratio (HNR)~\cite{France2000, Cummins2015, Leal2024}. These acoustic changes are largely involuntary, making speech a more objective indicator than self-report. The widespread availability of telephone infrastructure means that speech samples can be collected remotely and at scale, without requiring any specialised hardware from the participant.
+
+The field of mobile health (mHealth) has long recognised this potential~\cite{Kumar2013}, and a substantial body of work has explored the use of speech and machine learning for depression detection~\cite{Low2020, Tlachac2022, Qin2024}. However, a critical and recurring limitation of many existing systems is their lack of \textit{interpretability}. Black-box models may achieve competitive classification accuracy on benchmark datasets, but offer little insight into \textit{why} a particular prediction was made, which is essential in clinical settings where a counsellor must exercise independent professional judgement~\cite{Thieme2020, Ma2023}. The absence of interpretability also undermines trust among practitioners and raises ethical concerns about deploying AI in high-stakes domains.
+
+\section{Problem Statement}
+
+The central problem this thesis addresses can be stated as follows:
+
+\textit{How can one design and implement a scalable, interpretable, and ethically grounded system that detects depression from speech using machine learning, and operationalises it in a university setting to proactively support counsellors in identifying at-risk students?}
+
+This problem decomposes into four specific research challenges:
+\begin{enumerate}
+    \item \textbf{Speech representation}: Which features extracted from speech best capture the acoustic correlates of depression, and how should they be computed and aggregated for machine learning?
+    \item \textbf{Classification and ablation}: How do modelling choices — segment length, decision threshold, and classifier — affect depression detection performance, and what configuration is optimal?
+    \item \textbf{Automated data collection}: How can voice data be collected automatically and non-intrusively from a large student population using existing telephony infrastructure?
+    \item \textbf{System design}: How should the overall mHealth infrastructure be architected for real-world deployment, ensuring scalability, data security, and integration with existing counselling workflows?
+\end{enumerate}
+
+\section{Research Questions}
+
+This thesis investigates the following research questions:
+
+\begin{itemize}
+    \item \textbf{RQ1}: Is there a genuine need for a scalable, automated tool to screen university students for depression, and is speech a viable medium for such screening?
+    \item \textbf{RQ2}: What is the effect of audio segment length on the performance of speech-based depression detection?
+    \item \textbf{RQ3}: How can speech emotion recognition experiments inform feature engineering choices for depression detection?
+    \item \textbf{RQ4}: What system architecture best supports the operational requirements of a live mHealth deployment in an institutional setting?
+\end{itemize}
+
+\section{Contributions of the Thesis}
+
+The following are the primary contributions of this thesis:
+
+\begin{enumerate}
+    \item \textbf{Speech Emotion Recognition (SER) preliminary study}: A series of SER experiments using custom pause-histogram and mel-spectrogram feature sets, combined with deep architectures (2D CNN with Squeeze-and-Excitation residual blocks, 1D CNN + LSTM, 2D CNN + BiGRU), evaluated across multiple datasets — RAVDESS, CREMA-D, EMO-DB, TESS, and IESC. These experiments provide grounding for the downstream depression detection feature design.
+
+    \item \textbf{ML processing pipeline for speech-based depression detection}: A complete pipeline encompassing participant speech extraction and silence removal, fixed-length segmentation, TSFEL-based time-series feature extraction (156 features per segment), four-statistic aggregation (mean, std, min, max) to a 624-dimensional feature vector, and a Random Forest classifier (200 trees) providing subject-level depression risk scores.
+
+    \item \textbf{Ablation study on the DAIC-WOZ corpus}: Systematic evaluation across five segment lengths (3, 5, 7, 9, 11 seconds) and four classification thresholds (0.3, 0.4, 0.5, 0.6), identifying the optimal configuration (7-second segments, threshold~$= 0.5$, macro-F1~$= 0.385$).
+
+    \item \textbf{End-to-end mHealth system}: Design and implementation of an operational system integrating a Twilio-based IVR for automated outbound voice collection, a FastAPI backend, an asynchronous Celery + RabbitMQ task queue, MinIO object storage for secure audio archival, a PostgreSQL relational database, and a React-based counsellor dashboard.
+
+    \item \textbf{Human-in-the-loop design}: A system philosophy and concrete implementation that positions ML predictions as decision support, with all clinical authority retained by trained counsellors.
+\end{enumerate}
+
+\section{Outline of the Thesis}
+
+The remainder of this thesis is organised as follows:
+
+\noindent \textbf{Chapter 2} reviews related work across mobile health technologies, speech as a biomarker for depression, machine learning approaches for speech-based depression detection, benchmark datasets, and interactive systems for mental health.
+
+\noindent \textbf{Chapter 3} presents the ML processing pipeline: SER preliminary experiments, audio preprocessing on DAIC-WOZ, TSFEL feature extraction, aggregation, the Random Forest classifier, and a comprehensive ablation study of segment length and threshold.
+
+\noindent \textbf{Chapter 4} describes the mHealth system architecture and its design goals, covering the Twilio IVR call flow, microservices infrastructure, asynchronous task processing, data management, and the counsellor dashboard.
+
+\noindent \textbf{Chapter 5} describes the pilot trial, including qualitative and quantitative analyses. (Reserved for future work.)
+
+\noindent \textbf{Chapter 6} presents the conclusions drawn from this work.
+
+\noindent \textbf{Chapter 7} outlines directions for future research.

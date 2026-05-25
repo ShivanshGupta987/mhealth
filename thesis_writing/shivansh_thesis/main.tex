@@ -1,0 +1,250 @@
+\documentclass[11pt, a4paper, oneside]{Thesis}
+\usepackage{floatrow}
+\floatsetup[table]{capposition=top}
+\usepackage{textcomp}
+\usepackage{wrapfig}
+\usepackage{lscape}
+\usepackage{rotating}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{amsmath}
+\usepackage{upgreek}
+\usepackage{subcaption}
+\usepackage{gensymb}
+\usepackage{csquotes}
+\usepackage{pdfpages}
+\usepackage{lipsum}
+\usepackage{xcolor}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+% Allow hyphenation in monospace font and fix quotes in listings
+\usepackage[T1]{fontenc}
+\usepackage{upquote}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, backgrounds, calc, decorations.pathreplacing}
+\usepackage{listings}
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  backgroundcolor=\color{gray!8},
+  keywordstyle=\color{blue!70},
+  commentstyle=\color{green!50!black},
+  stringstyle=\color{orange!80!black},
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  numbersep=5pt
+}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{url}
+\usepackage{xurl}
+\usepackage{acronym}
+\usepackage{array}
+\newcolumntype{L}{>{\centering\arraybackslash}m{3cm}}
+
+\makeatletter
+\AtBeginDocument{%
+  \renewcommand*{\AC@hyperlink}[2]{%
+    \begingroup
+      \hypersetup{hidelinks}%
+      \hyperlink{#1}{#2}%
+    \endgroup
+  }%
+}
+\makeatother
+
+\graphicspath{{Pictures/}}
+\usepackage[numbers, sort&compress]{natbib}
+
+\hypersetup{urlcolor=black, colorlinks=true}
+\title{\ttitle}
+
+\begin{document}
+\makeatletter
+\makeatother
+
+\frontmatter
+
+\setstretch{1.6}
+
+\fancyhead{}
+\rhead{\thepage}
+
+\pagestyle{fancy}
+
+\newcommand{\HRule}{\rule{\linewidth}{0.5mm}}
+
+\hypersetup{pdftitle={\ttitle}}
+\hypersetup{pdfsubject=\subjectname}
+\hypersetup{pdfauthor=\authornames}
+\hypersetup{pdfkeywords=\keywordnames}
+
+%----------------------------------------------------------------------------------------
+%	TITLE PAGE
+%----------------------------------------------------------------------------------------
+
+\begin{titlepage}
+\begin{center}
+
+\HRule \\[0.3cm]
+{\huge \bfseries \ttitle}\\[0.3cm]
+\HRule \\[0.8cm]
+
+\large \textit{A thesis submitted in fulfilment of the requirements for the degree of}\\[0.15cm]
+\textbf{\degreename}\\[0.2cm]
+\textit{by}\\[0.2cm]
+\textbf{\authornames}\\[0.2cm]
+\textit{under the supervision of}\\[0.15cm]
+\textbf{\supnameA}\\[0.15cm]
+\textit{Co-advisors:}\\[0.1cm]
+\textbf{Dr.\ Yogesh K. Meena} \quad \textbf{Dr.\ Nipun Batra}
+
+\vfill
+
+\includegraphics[width=0.28\linewidth]{Pictures/IITGN.png}\\[0.35cm]
+\MakeUppercase\DEPTNAME\\[0.2cm]
+\textsc{\MakeUppercase\UNIVNAME}\\[0.3cm]
+\large \today
+
+\end{center}
+\end{titlepage}
+
+%----------------------------------------------------------------------------------------
+%	DECLARATION PAGE
+%----------------------------------------------------------------------------------------
+
+\Declaration{\addtocontents{toc}{\vspace{1em}}}
+\setcounter{page}{2}
+
+\begin{minipage}{\textwidth}
+    It is certified that the work contained in this thesis entitled \textbf{\enquote{\ttitle}} by \textbf{\authornames} \textbf{(\rollno)} has been carried out under my supervision and that it has not been submitted elsewhere for a degree.
+\end{minipage}
+
+\vspace{20.00mm}
+
+\begin{minipage}{0.45\textwidth}
+\begin{flushleft}
+    \textbf{\supnameA}\\
+    Professor\\
+    Dept.\ of Computer Science \& Engineering\\
+    \univname
+\end{flushleft}
+\end{minipage}
+\hfill
+\begin{minipage}{0.45\textwidth}
+\begin{flushright}
+    \textbf{Dr.\ Yogesh K. Meena}\\
+    Assistant Professor\\
+    Dept.\ of Computer Science \& Engineering\\
+    \univname\\[0.6cm]
+    \textbf{Dr.\ Nipun Batra}\\
+    Associate Professor\\
+    Dept.\ of Computer Science \& Engineering\\
+    \univname
+\end{flushright}
+\end{minipage}
+
+\vfill
+
+\clearpage
+
+%----------------------------------------------------------------------------------------
+%	ABSTRACT PAGE
+%----------------------------------------------------------------------------------------
+
+\abstract{\addtocontents{toc}{\vspace{1em}}
+
+Depression is a pervasive mental health challenge in higher education, where academic pressure, career uncertainty, and social stressors disproportionately affect students. Traditional diagnostic approaches are limited in scalability and often stigmatising, necessitating automated, non-invasive, and interpretable screening tools. This thesis presents a complete system for depression detection from speech via machine learning, deployed as a mobile health (mHealth) platform for proactive screening of university students.
+
+The work spans two interconnected technical threads. First, a series of Speech Emotion Recognition (SER) experiments were conducted as preliminary groundwork, exploring custom feature engineering (pause-histogram and mel-spectrogram features) combined with deep neural network architectures — including 2D CNN with Squeeze-and-Excitation blocks, 1D CNN + LSTM, and 2D CNN + BiGRU — evaluated on RAVDESS, CREMA-D, EMO-DB, TESS, and IESC. These experiments informed feature design choices for the downstream depression detection task.
+
+Second, a complete depression detection pipeline was implemented and evaluated on the DAIC-WOZ corpus. Audio recordings are preprocessed (participant speech extraction and silence removal), segmented into fixed-length windows, and processed by the Time Series Feature Extraction Library (TSFEL) to produce 156 features per segment. Four statistical aggregators (mean, standard deviation, minimum, maximum) yield a 624-dimensional feature vector, fed into a Random Forest classifier (200 trees). Extensive ablation studies across five segment lengths (3, 5, 7, 9, 11 seconds) and four classification thresholds (0.3, 0.4, 0.5, 0.6) identify 7-second segments at threshold 0.5 as the optimal configuration, achieving a macro-F1 of 0.385.
+
+The pipeline is operationalised within a microservices mHealth system comprising a Twilio-based Interactive Voice Response (IVR) module for automated outbound voice data collection, a FastAPI backend, a Celery + RabbitMQ asynchronous task queue, MinIO object storage for secure audio archival, a PostgreSQL relational database, and a React counsellor dashboard. The system is designed around seven principles including scalability, interpretability, and a human-in-the-loop philosophy in which machine learning predictions serve as decision support for trained counsellors.
+
+}
+
+%----------------------------------------------------------------------------------------
+%	ACKNOWLEDGEMENTS
+%----------------------------------------------------------------------------------------
+
+\clearpage
+\setstretch{1.3}
+
+\acknowledgements{\addtocontents{toc}{\vspace{1em}}
+
+I would like to express my deepest gratitude to my supervisor, \textbf{Dr.\ Rajat Moona}, for his invaluable guidance, strategic vision, and unwavering support throughout this research. His insights shaped the direction of this work in fundamental ways.
+
+I am equally thankful to my co-advisors, \textbf{Dr.\ Yogesh K. Meena} and \textbf{Dr.\ Nipun Batra}, for their detailed technical feedback, patient mentorship, and for consistently pushing the quality of this work higher. Their complementary expertise in human-computer interaction and machine learning was indispensable.
+
+I extend my sincere thanks to the Indian Institute of Technology Gandhinagar for providing an outstanding research environment, computational resources, and financial support that made this work possible.
+
+I am deeply thankful to the student volunteers who participated in the pilot study and data collection, and who generously shared their experiences regarding mental health and technology acceptance. I also extend my sincere appreciation to the counselling team at IIT Gandhinagar, whose insights into institutional mental health practice informed the design of the system and whose support was invaluable in shaping a tool aligned with real counselling needs.
+
+Finally, I am profoundly grateful to my family for their unconditional love, patience, and belief in me throughout this journey.
+
+\textbf{\authornames}
+
+}
+\clearpage
+
+%----------------------------------------------------------------------------------------
+%	LIST OF CONTENTS/FIGURES/TABLES
+%----------------------------------------------------------------------------------------
+
+\pagestyle{fancy}
+\tableofcontents
+\listoffigures
+\listoftables
+
+%----------------------------------------------------------------------------------------
+%	ABBREVIATIONS
+%----------------------------------------------------------------------------------------
+
+\clearpage
+
+\setstretch{1.5}
+
+\chapter*{Abbreviations}
+\addtotoc{Abbreviations}
+\input{acro_list}
+
+%----------------------------------------------------------------------------------------
+%	DEDICATORY
+%----------------------------------------------------------------------------------------
+
+\clearpage
+
+\setstretch{1.3}
+\pagestyle{empty}
+\dedicatory{Dedicated to my family}
+\addtocontents{toc}{\vspace{2em}}
+
+%----------------------------------------------------------------------------------------
+%	THESIS CONTENT - CHAPTERS
+%----------------------------------------------------------------------------------------
+
+\mainmatter
+\pagestyle{fancy}
+
+\input{Chapters/Chapter1}
+\input{Chapters/Chapter2}
+\input{Chapters/Chapter3}
+\input{Chapters/Chapter4}
+\input{Chapters/Chapter5}
+\input{Chapters/Chapter6}
+\input{Chapters/Chapter7}
+
+%----------------------------------------------------------------------------------------
+%	BIBLIOGRAPHY
+%----------------------------------------------------------------------------------------
+
+\addtocontents{toc}{\vspace{2em}}
+\backmatter
+
+\label{Bibliography}
+\bibliographystyle{plainnat}
+\bibliography{Bibliography}
+
+\end{document}

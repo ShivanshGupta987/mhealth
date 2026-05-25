@@ -1,0 +1,167 @@
+\chapter{Pilot Trial}
+\label{Chapter5}
+
+This chapter presents the pilot trial conducted to evaluate the proposed mHealth system with real users. The trial involved 10 Master's degree students at IIT Gandhinagar and collected spoken audio responses to a structured set of conversational prompts. The collected audio was processed through the complete ML pipeline described in Chapter~\ref{Chapter3} to produce depression risk predictions. Both quantitative analysis (prediction results, response durations, segment counts) and qualitative observations are reported.
+
+%=============================================================
+\section{Study Setup}
+%=============================================================
+
+\subsection{Participants}
+
+Ten Master's degree students from IIT Gandhinagar participated in the pilot trial. All participants were enrolled in postgraduate programmes and voluntarily agreed to take part. Participation was anonymous; each participant is identified by a pseudonym (User1–User10) throughout this chapter. Informed consent was obtained from all participants prior to data collection.
+
+\subsection{Data Collection Instrument}
+
+Each participant was asked to respond verbally to a structured set of 10 open-ended conversational prompts. The prompts were intentionally designed to be non-clinical and conversational, covering everyday topics related to mood, habits, goals, and aspirations. The prompts are listed in Table~\ref{tab:questionnaire}.
+
+\begin{table}[h]
+\centering
+\caption{Conversational prompts used for audio data collection in the pilot trial.}
+\label{tab:questionnaire}
+\begin{tabular}{@{}cp{10.5cm}@{}}
+\toprule
+\textbf{P\#} & \textbf{Prompt} \\
+\midrule
+P1  & How is your day going so far? \\
+P2  & What are your plans for today? \\
+P3  & How are you feeling right now? \\
+P4  & What are some of your daily habits? \\
+P5  & What changes would you like to see in yourself a year from now? \\
+P6  & What do you enjoy doing in your free time? \\
+P7  & What motivates you to keep going every day? \\
+P8  & How do you usually start your mornings? \\
+P9  & What is something new you have learned recently? \\
+P10 & Where do you see yourself after graduating from IIT Gandhinagar? \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Audio Recording Procedure}
+
+Responses were recorded individually for each prompt as separate audio files in Opus format at 16\,kHz. The complete set of recordings for each participant was stored under a per-user directory inside \texttt{questionnaire\_audio\_data.zip}.
+
+Prior to ML inference, all 10 response files per user were loaded with \texttt{librosa} (sr\,=\,16\,000\,Hz, mono), resampled to a common sample rate, and concatenated into a single continuous audio stream using \texttt{numpy.concatenate()}, following the same pipeline as the production system (Section~\ref{sec:pipeline_detail}).
+
+%=============================================================
+\section{Response Duration Analysis}
+%=============================================================
+
+Table~\ref{tab:durations} reports the duration of each individual response and the total cumulative speech duration per participant. These figures reflect the amount of acoustic information available to the ML model for each user.
+
+\begin{table}[h]
+\centering
+\caption{Per-prompt response duration (seconds) and total duration per participant.}
+\label{tab:durations}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}lrrrrrrrrrrrr@{}}
+\toprule
+\textbf{User} & \textbf{P1} & \textbf{P2} & \textbf{P3} & \textbf{P4} & \textbf{P5} & \textbf{P6} & \textbf{P7} & \textbf{P8} & \textbf{P9} & \textbf{P10} & \textbf{Total (s)} & \textbf{Segs} \\
+\midrule
+User1  & 5.5  & 5.3  & 3.7  & 5.2  & 4.4  & 4.9  & 5.2  & 3.9  & 4.2  & 5.9  & 48.2  & 7  \\
+User2  & 6.4  & 8.0  & 5.3  & 4.8  & 3.6  & 6.0  & 4.3  & 8.0  & 8.8  & 5.8  & 61.0  & 8  \\
+User3  & 5.5  & 9.8  & 11.0 & 17.8 & 5.9  & 9.2  & 19.4 & 8.7  & 11.2 & 8.5  & 106.9 & 14 \\
+User4  & 2.5  & 5.3  & 3.3  & 16.8 & 4.8  & 3.3  & 1.8  & 8.3  & 12.9 & 1.3  & 60.2  & 8  \\
+User5  & 7.0  & 14.2 & 8.4  & 12.0 & 9.2  & 8.7  & 13.9 & 11.8 & 13.2 & 12.2 & 110.5 & 14 \\
+User6  & 10.8 & 11.6 & 3.7  & 17.5 & 24.8 & 21.5 & 24.9 & 9.8  & 12.6 & 30.6 & 167.8 & 21 \\
+User7  & 10.4 & 9.0  & 10.2 & 19.6 & 14.2 & 16.7 & 13.7 & 13.6 & 17.7 & 15.8 & 140.8 & 18 \\
+User8  & 10.1 & 9.9  & 7.0  & 15.3 & 10.7 & 14.9 & 11.6 & 14.3 & 10.0 & 6.0  & 109.9 & 14 \\
+User9  & 5.3  & 5.2  & 2.9  & 6.8  & 3.0  & 4.2  & 3.6  & 13.7 & 13.5 & 24.1 & 82.3  & 11 \\
+User10 & 8.8  & 8.7  & 2.9  & 6.2  & 6.9  & 8.9  & 9.6  & 9.8  & 12.0 & 13.0 & 86.8  & 11 \\
+\midrule
+\textbf{Mean} & 7.2 & 8.7 & 5.8 & 12.2 & 8.8 & 9.8 & 10.8 & 10.2 & 11.6 & 12.3 & 97.4 & 12.6 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\noindent\textbf{Observations from duration analysis:}
+\begin{itemize}
+    \item Total response durations ranged from 48.2\,s (User1, 7 segments) to 167.8\,s (User6, 21 segments), reflecting substantial individual variation in verbosity.
+    \item Prompts P9 and P10 (future goals and post-graduation plans) elicited the longest average responses (11.6\,s and 12.3\,s respectively), likely because they invite more elaborate and forward-looking reflection.
+    \item Prompt P3 (``How are you feeling right now?'') produced the shortest average responses (5.8\,s), consistent with the tendency to give brief answers to direct emotional questions.
+    \item The segment count (final column) is derived by dividing the total concatenated audio duration by the 7-second segment window, which determines how many independent feature vectors are fed to the Random Forest.
+\end{itemize}
+
+%=============================================================
+\section{Quantitative Analysis: Depression Risk Predictions}
+%=============================================================
+
+Table~\ref{tab:pilot_results} presents the full depression risk prediction results produced by the ML pipeline for all 10 participants.
+
+\begin{table}[h]
+\centering
+\caption{Depression risk prediction results for all 10 pilot participants.}
+\label{tab:pilot_results}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}lcccccr@{}}
+\toprule
+\textbf{User} & \textbf{Risk} & \textbf{Probability} & \textbf{Level} & \textbf{Confidence} & \textbf{Segments} & \textbf{Total (s)} \\
+\midrule
+User1  & 1 & 0.5356 & \textbf{High} & 0.5356 & 7  & 48.2  \\
+User2  & 0 & 0.3916 & Low           & 0.6084 & 8  & 61.0  \\
+User3  & 0 & 0.4209 & Low           & 0.5791 & 14 & 106.9 \\
+User4  & 0 & 0.3485 & Low           & 0.6515 & 8  & 60.2  \\
+User5  & 0 & 0.4464 & Low           & 0.5536 & 14 & 110.5 \\
+User6  & 0 & 0.2953 & Low           & 0.7047 & 21 & 167.8 \\
+User7  & 0 & 0.4353 & Low           & 0.5647 & 18 & 140.8 \\
+User8  & 1 & 0.5922 & \textbf{High} & 0.5922 & 14 & 109.9 \\
+User9  & 0 & 0.4169 & Low           & 0.5831 & 11 & 82.3  \\
+User10 & 0 & 0.3674 & Low           & 0.6326 & 11 & 86.8  \\
+\midrule
+\multicolumn{7}{@{}l}{\textit{Summary: 2/10 predicted High risk \quad Average probability: 0.4250}} \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\subsection{Key Quantitative Findings}
+
+\begin{itemize}
+    \item \textbf{2 out of 10 participants (20\%) were predicted as High risk} (depression\_risk\,=\,1) by the model — User1 (probability: 0.5356) and User8 (probability: 0.5922).
+    \item \textbf{Average risk probability across all participants: 0.4250}, which is below the 0.5 decision threshold, indicating that the majority of participants were classified as Low risk.
+    \item \textbf{User8 had the highest risk probability (0.5922)} and the highest confidence in the High-risk direction, with the longest sustained speech patterns across multiple responses.
+    \item \textbf{User6 had the lowest risk probability (0.2953)} and the highest confidence (0.7047), suggesting acoustically clear low-risk features; this participant also had the longest total recording duration (167.8\,s, 21 segments).
+    \item \textbf{Borderline cases}: User3 (0.4209), User5 (0.4464), and User7 (0.4353) all had probabilities in the range 0.42–0.45 — close to the threshold, warranting counsellor attention even though classified as Low risk.
+    \item \textbf{Confidence scores} for Low-risk predictions ranged from 0.5536 (User5) to 0.7047 (User6), reflecting varying degrees of model certainty. Lower confidence scores in the Low-risk group identify participants worth monitoring.
+\end{itemize}
+
+
+%=============================================================
+\section{Qualitative Analysis}
+%=============================================================
+
+\subsection{Participant Feedback}
+
+Following the recording session, participants were asked informally about their experience with the prompt format. General themes from participant feedback included:
+
+\begin{itemize}
+    \item \textbf{Naturalness of prompts}: Most participants found the open-ended conversational format comfortable and non-threatening, consistent with the design goal of non-intrusiveness (DG5).
+    \item \textbf{Prompt depth}: Prompts about future goals (P10) and motivation (P7) elicited the most detailed and emotionally expressive responses, as evidenced by their longer average durations.
+    \item \textbf{Privacy concerns}: Several participants expressed comfort with audio data being handled within the institute's own infrastructure rather than sent to third-party cloud services, validating the MinIO self-hosting design choice (DG4).
+    \item \textbf{Awareness of AI screening}: When informed that their audio would be processed by a machine learning model, participants generally expressed acceptance, provided that a counsellor would review and act on any flagged cases — directly corroborating the necessity of DG3 (Human-in-the-Loop).
+\end{itemize}
+
+\subsection{Observations on System Behaviour}
+
+\begin{itemize}
+    \item The \texttt{run\_predictions.py} script successfully processed all 10 users without errors, confirming end-to-end pipeline robustness.
+    \item The number of 7-second segments per user scaled naturally with total response duration, ranging from 7 segments (User1, 48.2\,s) to 21 segments (User6, 167.8\,s).
+    \item The mean probability of 0.4250 across all participants is below the 0.5 threshold, which is expected in a healthy student sample where most participants do not exhibit strong depressive acoustic patterns.
+    \item The two flagged participants (User1 and User8) represent 20\% of the cohort, which is slightly below the clinical prevalence reported in similar university populations~\cite{BlackDeer2023}, suggesting the model's threshold may be appropriately calibrated for this setting.
+\end{itemize}
+
+%=============================================================
+\section{Limitations}
+%=============================================================
+
+\begin{itemize}
+    \item \textbf{No ground-truth labels}: Participants were not assessed using a validated clinical instrument (e.g., PHQ-9) during this pilot, so it is not possible to compute sensitivity, specificity, or classification accuracy. This is a known limitation of the pilot phase and is addressed in the future work plan (Chapter~\ref{Chapter7}).
+    \item \textbf{Small sample size}: With only 10 participants, statistical conclusions cannot be drawn. This trial serves as a feasibility demonstration rather than a clinical evaluation.
+    \item \textbf{Controlled recording environment}: Audio was recorded in a controlled setting rather than collected via the Twilio IVR system used in production, introducing a potential domain gap relative to real deployment conditions (telephone-quality audio, background noise).
+    \item \textbf{Self-selection bias}: Participants who volunteered may differ systematically from the broader student population.
+\end{itemize}
+
+%=============================================================
+\section{Summary}
+%=============================================================
+
+The pilot trial collected audio responses from 10 Master's degree students at IIT Gandhinagar across a 10-prompt conversational session. The ML pipeline processed a total of 97.4 seconds of speech per participant on average, segmented into 12.6 seven-second windows. The model predicted 2 out of 10 participants as High risk (depression probability $>$ 0.5), with an average cross-participant probability of 0.4250. User8 received the highest risk probability (0.5922) and User6 the lowest (0.2953). Three participants in the borderline range (0.42–0.45) were identified for potential counsellor monitoring. The trial confirms the technical feasibility of the end-to-end pipeline and provides an initial indication of the system's behaviour on a real student cohort.

@@ -1,0 +1,115 @@
+\chapter{Related Work}
+\label{Chapter2}
+
+This chapter reviews the body of literature relevant to the design and implementation of a speech-based depression detection system. The review spans five areas: the mental health crisis in higher education, mobile health technologies, speech as a biomarker for depression, machine learning methods for affective computing and depression detection, and interactive systems for mental health data collection.
+
+\section{Mental Health in Higher Education}
+
+The rising prevalence of mental health disorders in university settings has been extensively documented. Depression and anxiety are among the most commonly reported conditions. Mortier et al.~\cite{Mortier2018} found that suicidal ideation affects a significant proportion of college students across countries surveyed by the WHO World Mental Health Survey. BlackDeer et al.~\cite{BlackDeer2023} reported that 76\% of college students in the United States experienced moderate to severe psychological distress in 2023, and King's College London~\cite{KCL2022} noted that mental health difficulties have nearly tripled among undergraduate students since COVID-19.
+
+The causes are multifactorial. Academic pressure, financial stress, career uncertainty, competitive institutional environments, and weakened social connections all contribute~\cite{Mortier2018}. Counselling infrastructure at most universities is inadequate to address this volume of need, and stigma continues to prevent students from proactively seeking help. This motivates the development of automated, proactive screening systems to assist counsellors.
+
+Self-report questionnaires such as the PHQ-9 and PHQ-8~\cite{Kroenke2010} remain the standard tools for depression screening. While validated and widely used, they require active participation and honest self-disclosure — both compromised by stigma and symptom denial. Objective, passively collected biomarkers are therefore an attractive complement.
+
+\section{Mobile Health Technologies for Mental Health}
+
+Mobile health (mHealth) technologies have demonstrated significant promise for extending mental health services beyond clinical settings~\cite{Kumar2013}. Arevian et al.~\cite{Arevian2020} explored the feasibility of using mobile technology to collect speech samples from individuals with serious mental illness, analysing 210 lexical and acoustic speech features and demonstrating significant correlations with clinical assessments of wellbeing.
+
+Tlachac et al.~\cite{Tlachac2022} introduced DepreST-CAT, a dataset of smartphone call and text logs collected during COVID-19 to screen for mental illness, demonstrating that communication patterns correlate with mental health indicators. Lin et al.~\cite{Lin2022} investigated a machine learning-based smartphone application for detecting depression and anxiety in an older population, demonstrating feasibility even with limited data. Suendermann-Oeft et al.~\cite{Suendermann2019} presented NEMSI, a cloud-based multimodal dialogue system that captures audio and video responses to open-ended questions for neurological and mental health screening.
+
+\section{Speech as a Biomarker for Depression}
+
+Speech has been extensively studied as a non-invasive biomarker for depression. The theoretical basis lies in the psychomotor retardation associated with depressive states, which manifests in altered vocal production — changes in the regulation of breath, phonation, and articulation~\cite{Cummins2015}.
+
+France et al.~\cite{France2000} were among the first to systematically investigate the acoustic properties of speech as indicators of depression and suicidal risk, identifying fundamental frequency dynamics and energy measures as particularly informative. Quatieri and Malyska~\cite{Quatieri2012} extended this work to examine vocal-source biomarkers including shimmer, jitter, aspiration degree, and F0 dynamics, framing these features as indicators of psychomotor control precision.
+
+Cannizzaro et al.~\cite{Cannizzaro2004} demonstrated that speaking rate and pause time are significantly affected by depression severity. In a voice acoustical measurement study, depressed individuals exhibited slower speech rates and greater pause durations, consistent with psychomotor slowing. Cummins et al.~\cite{Cummins2015} provided a comprehensive review covering F0, formants, MFCCs, and energy, and emphasised the importance of standardised data collection. Leal et al.~\cite{Leal2024} surveyed the field in IEEE Transactions on Affective Computing, noting increasing use of deep learning alongside traditional feature engineering and persistent challenges around dataset size and interpretability.
+
+Albuquerque et al.~\cite{Albuquerque2021} found that HNR, jitter, and shimmer showed significant differences between normal and depressed groups across the lifespan. Seifpanahi et al.~\cite{Seifpanahi2023} confirmed that pitch variation and F0 statistics are reliably altered in women with depression.
+
+\subsection{Key Acoustic Features for Depression}
+
+Based on the clinical literature, the following speech features are most consistently associated with depression:
+\begin{itemize}
+    \item \textbf{Pitch Variation}: Depressed individuals exhibit reduced pitch range and more monotonous speech~\cite{Seifpanahi2023}.
+    \item \textbf{Speaking Rate}: Depression is associated with slower speech, reflecting psychomotor retardation~\cite{Cannizzaro2004}.
+    \item \textbf{Percentage Pause Time}: Greater proportion of silence is associated with depression~\cite{Cannizzaro2004}.
+    \item \textbf{Fundamental Frequency (F0)}: Mean F0, F0 standard deviation, and F0 slope dynamics are characteristic of depressed speech~\cite{France2000, Seifpanahi2023}.
+    \item \textbf{Harmonics-to-Noise Ratio (HNR)}: Lower HNR indicates greater noise in vocal production, associated with vocal quality disorders common in depression~\cite{Albuquerque2021}.
+    \item \textbf{Jitter}: Cycle-to-cycle variation in fundamental frequency; elevated jitter reflects instability in vocal fold vibration~\cite{Quatieri2012}.
+    \item \textbf{Shimmer}: Cycle-to-cycle variation in amplitude; altered shimmer reflects changes in vocal fold control under depression~\cite{Quatieri2012}.
+\end{itemize}
+
+\section{Datasets for Depression Detection from Speech}
+
+\subsection{DAIC-WOZ Corpus}
+
+The Distress Analysis Interview Corpus Wizard-of-Oz (DAIC-WOZ)~\cite{Gratch2014} is the primary benchmark dataset for speech-based depression detection. It contains clinical interviews conducted by a virtual agent with participants recruited from various locations, with PHQ-8 scores as ground truth labels. The standard partition used in this thesis follows the official split:
+\begin{itemize}
+    \item \textbf{Training set}: 107 interviews (30 depressed, 77 non-depressed)
+    \item \textbf{Development set}: 35 interviews (12 depressed, 23 non-depressed)
+    \item \textbf{Test set}: 47 interviews (14 depressed, 33 non-depressed)
+\end{itemize}
+The class imbalance (approximately 1:2.5 depressed to non-depressed) is a significant challenge, motivating careful threshold tuning.
+
+\subsection{RAVDESS}
+
+The Ryerson Audio-Visual Database of Emotional Speech and Song (RAVDESS)~\cite{Livingstone2018} consists of recordings from 24 professional actors (12 male, 12 female) expressing eight distinct emotions: neutral, calm, happy, sad, angry, fearful, disgust, and surprised. It is widely used for training and validating speech emotion recognition models. In this thesis, RAVDESS was used for the preliminary SER experiments. For depression detection tasks, emotions are mapped to two groups: negative (sad, angry, fearful, disgust) and positive (neutral, happy, calm, surprised).
+
+\subsection{EATD-Corpus}
+
+The Emotional Audio-Textual Depression Corpus (EATD-Corpus)~\cite{Shen2022} consists of audio recordings and text transcripts from 162 student volunteers from Tongji University, annotated with PHQ-8 scores. This dataset is particularly relevant because it was collected from a student population in an academic setting, closely mirroring the target deployment context.
+
+\subsection{CREMA-D, EMO-DB, TESS, and IESC}
+
+Additional datasets used in the SER preliminary experiments include:
+\begin{itemize}
+    \item \textbf{CREMA-D}~\cite{Cao2014}: 7,442 audio clips from 91 actors expressing 6 emotions; diverse in race and ethnicity.
+    \item \textbf{EMO-DB}: 535 audio clips from 10 German actors expressing 7 emotions.
+    \item \textbf{TESS}: 2,800 samples from two actresses recording 7 emotions.
+    \item \textbf{IESC} (Indian Emotional Speech Corpus): 600 samples from 8 participants (5 male, 3 female) expressing 5 emotions (angry, fear, happy, neutral, sad).
+\end{itemize}
+
+\section{Machine Learning for Speech-Based Depression Detection}
+
+\subsection{Classical Feature Engineering and Random Forests}
+
+Classical approaches to speech-based depression detection extract hand-crafted acoustic features and apply traditional classifiers. Random Forest classifiers~\cite{Rigatti2017} have proven effective for this task. As ensembles of decision trees trained on bootstrapped subsets, they handle high-dimensional feature vectors well, are robust to overfitting through bagging, provide feature importance scores that aid interpretability, and produce well-calibrated probability estimates suitable for clinical use.
+
+The Time Series Feature Extraction Library (TSFEL)~\cite{TSFEL2020} provides automated, domain-organised extraction of features across statistical, temporal, and spectral domains. TSFEL extracts 156 features per segment per channel, providing a comprehensive representation suitable for classification. The combination of TSFEL features and a Random Forest classifier has not been previously reported on the DAIC-WOZ corpus; this thesis contributes this evaluation.
+
+\subsection{Deep Learning Approaches}
+
+More recent work has explored end-to-end deep learning for depression detection from speech. Shen et al.~\cite{Shen2022} introduced the EATD-Corpus and proposed a GRU/BiLSTM-based model for automatic depression detection. Qin et al.~\cite{Qin2024} provided a benchmark analysis of language models for depression detection from remote interviews.
+
+Transfer learning from large pre-trained speech models has emerged as a powerful approach, particularly for low-resource settings. Zhang et al.~\cite{Zhang2023} proposed a transfer learning framework for speech depression detection using wav2vec 2.0~\cite{Baevski2020}, fine-tuned on depression-related features. The model integrates 1D-CNN with attention pooling at the segment level and LSTM with self-attention at the frame level to capture temporal relationships. On DAIC-WOZ, this approach achieved a macro-F1 of 0.79 for depressed and 0.88 for non-depressed speakers. This work was reviewed as part of the literature survey and provides an important upper-bound comparison for the TSFEL-based approach.
+
+Rizhinashvili et al.~\cite{Rizhinashvili2024} proposed an enhanced SER system using averaged Valence-Arousal-Dominance (VAD) mapping with wav2vec~2.0 and LSTM networks. The architecture generates ground-truth VAD embeddings by averaging three pre-trained VAD networks, training on RAVDESS and evaluating across CREMA-D, EMO-DB, TESS, and IESC. This architecture was implemented and benchmarked in this thesis as described in Chapter~\ref{Chapter3}.
+
+\subsection{TSFEL for Audio Feature Extraction}
+
+TSFEL~\cite{TSFEL2020} organises its feature extraction across three domains:
+\begin{enumerate}
+    \item \textbf{Statistical domain}: Distributional properties of amplitude values (mean, variance, kurtosis, skewness, percentiles, IQR).
+    \item \textbf{Temporal domain}: Time-domain structural properties (zero-crossing rate, autocorrelation, mean absolute deviation, slope, signal entropy).
+    \item \textbf{Spectral domain}: Frequency-domain characteristics (spectral centroid, roll-off, entropy, flux, MFCC coefficients, bandwidth).
+\end{enumerate}
+A full extraction across all three domains yields 156 features per segment. TSFEL was chosen for this thesis because it is comprehensive, well-tested, and its features are individually interpretable in acoustic terms — an important property for clinical deployment.
+
+\section{Interpretability and Human-in-the-Loop Systems}
+
+Feng and Chaspari~\cite{Feng2024} conducted a pilot study on clinician-AI collaboration in diagnosing depression from speech, finding that detailed explanations of AI predictions increase clinician trust. Ma et al.~\cite{Ma2023} critically examined vocal biomarker systems, arguing that interpretability is a fundamental ethical requirement for responsible deployment in mental health contexts. Thieme et al.~\cite{Thieme2020} identified interpretability, user trust, and human oversight as persistent gaps in the HCI-ML-mental health literature, calling for systems that integrate clinical expertise with ML capabilities.
+
+Maharjan et al.~\cite{Maharjan2022} investigated the experiences of individuals using a speech-enabled conversational agent for self-report of wellbeing, finding that speech-based agents were acceptable to users but require transparency and user control.
+
+\section{Summary}
+
+The literature review establishes the following foundations for this thesis:
+\begin{itemize}
+    \item Depression is a pressing, underserved mental health challenge in university settings, and speech is a well-validated non-invasive biomarker for it.
+    \item TSFEL provides a comprehensive, interpretable framework for speech feature extraction, and Random Forests are well-suited for classification from such feature vectors.
+    \item Deep learning, particularly wav2vec 2.0-based transfer learning, achieves higher classification performance on DAIC-WOZ but at the cost of interpretability.
+    \item SER datasets (RAVDESS, CREMA-D, IESC) provide valuable testbeds for preliminary feature engineering experiments.
+    \item Interpretability, human oversight, and privacy are non-negotiable design requirements for clinical mental health AI systems.
+    \item IVR systems are an effective and scalable mechanism for automated voice data collection.
+\end{itemize}

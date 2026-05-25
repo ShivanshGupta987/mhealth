@@ -51,6 +51,7 @@ nano .env
 ```
 
 Update `FRONTEND_URL`:
+
 ```env
 FRONTEND_URL=https://mhealth.iitgn.ac.in,https://10.0.62.206,http://mhealth.iitgn.ac.in,http://10.0.62.206
 ```
@@ -150,6 +151,7 @@ nano .env
 ```
 
 Update `FRONTEND_URL`:
+
 ```env
 FRONTEND_URL=https://mhealth.iitgn.ac.in,http://mhealth.iitgn.ac.in
 ```
@@ -288,6 +290,7 @@ openssl rsa -noout -modulus -in ssl/key.pem | openssl md5
 ### Issue: Browser shows "Not Secure" (Self-Signed)
 
 This is expected with self-signed certificates. Options:
+
 1. Add exception in browser (for testing)
 2. Use Let's Encrypt for trusted certificate
 3. Add certificate to system trust store (for internal use)
@@ -313,11 +316,14 @@ sudo journalctl -u certbot
 The backend API currently runs on HTTP (port 8000). For full HTTPS:
 
 ### Option A: Access via Frontend Proxy (Recommended)
+
 Use nginx to proxy API requests:
+
 - Frontend: `https://mhealth.iitgn.ac.in/`
 - API via proxy: `https://mhealth.iitgn.ac.in/api/`
 
 ### Option B: Separate HTTPS for Backend (Advanced)
+
 Requires separate nginx container or load balancer for backend.
 
 ---
@@ -327,7 +333,7 @@ Requires separate nginx container or load balancer for backend.
 1. **Use Strong Cipher Suites**: Already configured in nginx.conf
 2. **Enable HTTP Strict Transport Security (HSTS)**: Add to nginx.conf
 3. **Regular Certificate Renewal**: Set up auto-renewal for Let's Encrypt
-4. **Keep Private Key Secure**: 
+4. **Keep Private Key Secure**:
    - Never commit to Git
    - Set proper permissions (600)
    - Backup securely
@@ -363,10 +369,10 @@ docker restart mhealth-frontend
 
 After completing this guide:
 
-✅ HTTPS enabled on port 443  
-✅ HTTP (port 80) redirects to HTTPS  
-✅ SSL certificate configured  
-✅ Secure access: `https://mhealth.iitgn.ac.in`  
+✅ HTTPS enabled on port 443
+✅ HTTP (port 80) redirects to HTTPS
+✅ SSL certificate configured
+✅ Secure access: `https://mhealth.iitgn.ac.in`
 
-**Recommended:** Use **Let's Encrypt** (Option 2) for production deployments with public domains.  
+**Recommended:** Use **Let's Encrypt** (Option 2) for production deployments with public domains.
 **For Testing:** Use **Self-Signed** (Option 1) for internal/development environments.

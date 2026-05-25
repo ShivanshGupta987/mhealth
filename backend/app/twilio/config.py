@@ -1,6 +1,9 @@
 """Configuration for Twilio flows running inside backend service."""
 
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ── Twilio ────────────────────────────────────────────────────────────────────
 TWILIO_ACCOUNT_SID: str = os.getenv("TWILIO_ACCOUNT_SID", "")

@@ -1,0 +1,36 @@
+\chapter{Conclusion}
+\label{Chapter6}
+
+This thesis addressed the problem of automated, interpretable, and scalable depression detection from speech in a university setting. The work spanned two interconnected technical threads — Speech Emotion Recognition (SER) preliminary experiments and a full depression detection pipeline on the DAIC-WOZ corpus — implemented within a complete mHealth system for institutional deployment.
+
+\section{Summary of Contributions}
+
+\textbf{SER Preliminary Experiments.} A series of speech emotion recognition experiments explored custom feature engineering (pause-histogram features and mel-spectrogram features) combined with multiple deep neural network architectures: a 2D CNN with Squeeze-and-Excitation residual blocks, a 1D CNN + LSTM model, and a 2D CNN + BiGRU model. These were evaluated on RAVDESS, CREMA-D, EMO-DB, TESS, IESC. The experiments informed two key design decisions for the depression pipeline: the value of aggregating frame-level features using descriptive statistics, and the importance of combining spectral and temporal features.
+
+\textbf{ML Processing Pipeline.} A complete depression detection pipeline was implemented and evaluated on DAIC-WOZ. Raw interview audio is preprocessed (participant speech extraction, silence removal), segmented into fixed-length windows, and processed by TSFEL to yield 156 features per segment across statistical, temporal, and spectral domains. Four-statistic aggregation (mean, std, min, max) produces a 624-dimensional subject-level feature vector. A Random Forest classifier with 200 trees is trained on this representation and generates subject-level predictions with probability and confidence estimates.
+
+\textbf{Ablation Study.} A systematic ablation across five segment lengths (3, 5, 7, 9, 11 seconds) and four decision thresholds (0.3, 0.4, 0.5, 0.6) was conducted on the DAIC-WOZ development set. The optimal configuration — 7-second segments at $\theta = 0.5$ — achieved a macro-F1 of 0.385. The study demonstrated that 7-second segments capture sufficient prosodic information while remaining aligned with the deployed system's default configuration, and that the standard 0.5 threshold performs best at this segment length.
+
+\textbf{End-to-End mHealth System.} An operational system was designed and implemented comprising a Twilio-based IVR module for automated outbound voice data collection, a FastAPI backend, an asynchronous Celery + RabbitMQ task queue, MinIO object storage, a PostgreSQL relational database, and a React counsellor dashboard. The system automates the complete workflow from call initiation to depression risk reporting.
+
+\textbf{Human-in-the-Loop Design.} A design philosophy and implementation ensuring that ML predictions serve as decision support, with all clinical authority retained by counsellors.
+
+\section{Research Questions Revisited}
+
+\textbf{RQ1 (Need and viability of speech-based screening):} The pilot study with 10 M.Tech students at IIT Gandhinagar confirmed the technical feasibility of speech-based screening: the complete pipeline processed all participants without error, producing risk predictions for each. The clinical literature further establishes the theoretical basis for speech as a depression biomarker.
+
+\textbf{RQ2 (Effect of segment length and threshold):} The ablation study directly addressed this question. Segment length of 7 seconds at threshold 0.5 yielded the best macro-F1 of 0.385 on DAIC-WOZ. This configuration is also exactly aligned with the deployed system's default parameters, eliminating train–serve skew.
+
+\textbf{RQ3 (SER experiments informing feature design):} The SER experiments confirmed the value of statistical aggregation over frame-level features and the informativeness of combining spectral and temporal features — both of which were incorporated into the TSFEL-based aggregation pipeline.
+
+\textbf{RQ4 (System architecture):} The microservices architecture with asynchronous task processing, containerised deployment, and RESTful APIs proved well-suited to the operational requirements of a live institutional mHealth deployment.
+
+\section{Limitations}
+
+The TSFEL + Random Forest approach achieves a macro-F1 of 0.385 on DAIC-WOZ, which is substantially below the state-of-the-art transfer learning approach (macro-F1 $\approx$ 0.79 with wav2vec 2.0~\cite{Zhang2023}). This gap reflects the fundamental limitation of hand-crafted features relative to deep representations pre-trained on large-scale data. The TSFEL + RF approach is chosen for interpretability and deployment simplicity, not raw performance.
+
+The DAIC-WOZ corpus is collected from a Western English-speaking population and may not generalise to the Indian university student context targeted by the deployment system. Dataset mismatch is a known challenge in speech-based depression detection~\cite{Leal2024}.
+
+\section{Concluding Remarks}
+
+Depression detection from speech via machine learning represents a promising direction at the intersection of mHealth, affective computing, and human-computer interaction. This thesis demonstrates that it is technically feasible to build a complete, deployable system that collects speech from a university population via automated phone calls, extracts clinically relevant acoustic features, and provides interpretable depression risk assessments to counsellors. The key insight is that interpretability, scalability, and ethical design are complementary rather than conflicting requirements — and that grounding feature engineering in established clinical literature, positioning ML as decision support, and investing in privacy-preserving infrastructure together produce a system more likely to earn and sustain practitioner trust.

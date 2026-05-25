@@ -24,8 +24,8 @@ const drawerWidth = 240;
 const navItems = [
   { label: 'About', path: '/' },
   // { label: 'Database', path: '/database'},
-  { label: 'Twilio Call Management', path: '/twilio-call-management' },
-  { label: 'Twilio Database', path: '/twilio-database' },
+  { label: 'Call Management', path: '/twilio-call-management' },
+  // { label: 'Twilio Database', path: '/twilio-database' },
   // { label: 'Call Management Demo Page', path: '/entry-dashboard-demo' },
   { label: 'Call Status Dashboard', path: '/call-status-dashboard' },
   { label: 'Admin Dashboard', path: '/admin-dashboard' },

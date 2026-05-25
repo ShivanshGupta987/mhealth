@@ -1,0 +1,52 @@
+\chapter{Future Work}
+\label{Chapter7}
+
+The system established in this thesis provides a functional foundation for speech-based depression screening. Several important directions remain open for future research and development.
+
+\section{Transfer Learning with wav2vec 2.0}
+
+The most impactful immediate improvement is to replace the TSFEL + Random Forest classifier with a transfer learning approach based on wav2vec 2.0~\cite{Baevski2020, Zhang2023}. wav2vec 2.0 is pre-trained on 53,000 hours of unlabelled speech, providing rich contextual representations that far exceed the discriminative power of hand-crafted features. Zhang et al.~\cite{Zhang2023} achieved a macro-F1 of 0.79 on DAIC-WOZ by fine-tuning wav2vec 2.0 with a 1D-CNN + attention pooling module at the segment level and LSTM + self-attention at the frame level. Integrating this architecture into the ML microservice would substantially improve depression detection accuracy while retaining the system's modular architecture. The primary trade-off is reduced interpretability, which can be partially addressed through attention weight visualisation.
+
+\section{Collecting an India-Specific Dataset}
+
+The DAIC-WOZ corpus is collected from a Western, English-speaking population. The deployment target — Indian university students at IIT Gandhinagar — speaks a different variety of English and is influenced by different cultural and social norms around emotional expression. A specialised Indian dataset should be collected from the target student population, with demographic and linguistic diversity. Data augmentation strategies — environmental noise injection, time stretching, and fundamental frequency perturbation — can further expand the dataset. This would enable fine-tuning of pre-trained models to the target population, significantly improving generalisation.
+
+\section{Active Learning and Continual Retraining}
+
+As counsellors review and act on flagged students, their clinical assessments can serve as high-quality labels for model retraining. A future active learning pipeline should:
+\begin{itemize}
+    \item Identify recordings for which the model is least confident and prioritise them for counsellor review.
+    \item Capture counsellor labels through the dashboard.
+    \item Periodically retrain on accumulated labelled data from the deployment population.
+\end{itemize}
+This would adapt the model to the specific acoustic characteristics of the institution's student population over time.
+
+\section{Multimodal Extensions}
+
+Speech is one of several promising modalities for depression detection. Future iterations could incorporate:
+\begin{itemize}
+    \item \textbf{Linguistic features}: Transcripts obtained via ASR analysed for sentiment, lexical diversity, and negative self-referencing.
+    \item \textbf{Behavioural features}: Smartphone usage patterns (communication frequency, sleep schedules) via passive sensing.
+    \item \textbf{Video}: Facial action units from video recorded during calls.
+\end{itemize}
+Multimodal fusion has been shown to outperform unimodal approaches in affective computing~\cite{Cummins2015}, and the microservices architecture is well-suited to adding modality-specific inference services.
+
+\section{Adaptive Call Scripts}
+
+The current IVR script uses six fixed, scripted questions. A future enhancement would implement adaptive flows using NLP to follow up on responses that suggest distress, or to ask clarifying questions based on the participant's previous answers. Dynamic question selection could also balance clinical information gain with participant comfort.
+
+\section{Longitudinal Monitoring}
+
+The system currently provides point-in-time screening. Longitudinal tracking of the same student's vocal patterns over time — enabled by the Celery Beat scheduler already integrated into the system — would allow detection of trends and early warning of deteriorating mental health before a crisis. Anomaly detection on the temporal sequence of depression risk scores could serve as an early alert mechanism.
+
+\section{Large-Scale Evaluation}
+
+The pilot study described in Chapter~5 involved a small cohort of 10 participants and served as a feasibility demonstration. Scaling to a full clinical evaluation requires:
+\begin{itemize}
+    \item A controlled evaluation with a larger, representative sample of students, comparing system predictions against validated clinical assessments (e.g., PHQ-9).
+    \item Measurement of sensitivity, specificity, and positive and negative predictive value to characterise the model's clinical utility.
+\end{itemize}
+
+\section{Summary}
+
+The research agenda for this system spans: model improvement (wav2vec 2.0 transfer learning, institution-specific data collection, active learning), system enhancement (adaptive scripts, longitudinal tracking, multimodal fusion), and responsible deployment (ethics review, large-scale evaluation, SOP development). Each direction builds directly on the foundation established in this thesis.

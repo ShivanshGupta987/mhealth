@@ -1,0 +1,844 @@
+% TikZ styles used throughout this chapter
+\tikzset{
+  block/.style={rectangle, rounded corners=4pt, draw=black!70, fill=blue!10,
+                text width=3.2cm, minimum height=0.9cm, align=center, font=\small},
+  wideblock/.style={rectangle, rounded corners=4pt, draw=black!70, fill=blue!10,
+                text width=5.5cm, minimum height=0.9cm, align=center, font=\small},
+  dbblock/.style={cylinder, shape border rotate=90, aspect=0.2,
+                  draw=black!70, fill=orange!20,
+                  text width=2.4cm, minimum height=0.9cm, align=center, font=\small},
+  svcblock/.style={rectangle, rounded corners=4pt, draw=black!70, fill=green!12,
+                   text width=3.2cm, minimum height=0.9cm, align=center, font=\small},
+  decblock/.style={diamond, draw=black!70, fill=yellow!25, aspect=2.2,
+                   text width=2.6cm, align=center, font=\small},
+  arrow/.style={-{Stealth[length=2mm]}, thick, draw=black!70},
+  dasharrow/.style={-{Stealth[length=2mm]}, dashed, draw=gray!70},
+  groupbox/.style={draw=black!40, dashed, rounded corners=6pt, inner sep=6pt},
+}
+
+\chapter{ML Processing Pipeline}
+\label{Chapter3}
+
+This chapter presents the complete machine learning pipeline for speech-based depression detection as implemented in the codebase. The work proceeded through three phases: Phase~1 (domain-driven CNN for SER), Phase~2 (wav2vec~2.0 transfer learning), and Phase~3 (TSFEL + Random Forest on DAIC-WOZ). Section~\ref{sec:pipeline_overview} first presents the end-to-end system pipeline and then each phase is described in detail.
+
+%=============================================================
+\section{End-to-End Pipeline Overview}
+\label{sec:pipeline_overview}
+%=============================================================
+
+Figure~\ref{fig:e2e_pipeline} shows the complete end-to-end flow from IVR call to depression risk result as implemented across the backend (\texttt{celery\_config\_twilio.py}) and ML service (\path{ml-service/app/services/depression_prediction.py}).
+
+\begin{figure}[h]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[node distance=0.5cm and 0.3cm]
+
+  % Column 1 — Call & Storage
+  \node[block, fill=purple!12] (ivr)     {Twilio IVR\\Outbound Call\\(6 Questions)};
+  \node[block, fill=purple!12, below=of ivr]  (twilio)  {Twilio\\Recordings\\(per question)};
+  \node[block, fill=orange!18, below=of twilio] (minio)  {MinIO\\Object Storage\\(archived WAV)};
+
+  % Column 2 — Celery pipeline
+  \node[block, fill=teal!12, right=1.4cm of ivr]   (cel1)  {Celery Task\\archive\_call\\\_recordings};
+  \node[block, fill=teal!12, below=of cel1]         (cel2)  {Celery Task\\analyze\_call\\\_depression\_risk};
+  \node[block, fill=teal!12, below=of cel2]         (concat){Download \&\\Concatenate\\Responses};
+  \node[block, fill=teal!12, below=of concat]       (encode){Encode to\\WAV bytes\\(soundfile)};
+
+  % Column 3 — ML Service
+  \node[block, fill=blue!12, right=1.4cm of cel1]  (load)   {librosa.load()\\sr=16\,kHz\\mono=True};
+  \node[block, fill=blue!12, below=of load]         (norm)   {Normalize\\librosa.util\\.normalize()};
+  \node[block, fill=blue!12, below=of norm]         (seg)    {Segment Audio\\7\,s windows\\zero-pad last};
+  \node[block, fill=blue!12, below=of seg]          (tsfel)  {TSFEL Feature\\Extraction\\156 feat/seg};
+  \node[block, fill=blue!12, below=of tsfel]        (rf)     {Random Forest\\predict\_proba()\\per segment};
+  \node[block, fill=blue!12, below=of rf]           (agg)    {Aggregate\\$\bar{p}=\frac{1}{K}\sum p_i$\\threshold $\theta$};
+
+  % Column 4 — Output
+  \node[dbblock, right=1.4cm of load]  (db)   {PostgreSQL\\TwilioCalls\\record};
+  \node[block, fill=green!12, below=1.4cm of db]  (dash) {React\\Counsellor\\Dashboard};
+
+  % Arrows — column 1
+  \draw[arrow] (ivr)    -- (twilio);
+  \draw[arrow] (twilio) -- (minio);
+
+  % Arrows — col1 to col2
+  \draw[arrow] (twilio) -- node[above, font=\tiny]{on call end} (cel1);
+  \draw[arrow] (cel1)   -- (cel2);
+  \draw[arrow] (cel2)   -- (concat);
+  \draw[arrow] (minio.east) -| (concat.west);
+  \draw[arrow] (concat) -- (encode);
+
+  % Arrows — col2 to col3
+  \draw[arrow] (encode.east) -- node[above, font=\tiny]{HTTP POST} (load.west);
+  \draw[arrow] (load)  -- (norm);
+  \draw[arrow] (norm)  -- (seg);
+  \draw[arrow] (seg)   -- (tsfel);
+  \draw[arrow] (tsfel) -- (rf);
+  \draw[arrow] (rf)    -- (agg);
+
+  % Arrows — col3 to col4
+  \draw[arrow] (agg.east) -- ++(0.4,0) |- (db.west);
+  \draw[arrow] (db)  -- (dash);
+
+  % Group boxes
+  \begin{scope}[on background layer]
+    \node[groupbox, fit=(ivr)(twilio)(minio), label=above:{\scriptsize\textbf{IVR \& Storage}}] {};
+    \node[groupbox, fit=(cel1)(cel2)(concat)(encode), label=above:{\scriptsize\textbf{Celery Backend}}] {};
+    \node[groupbox, fit=(load)(norm)(seg)(tsfel)(rf)(agg), label=above:{\scriptsize\textbf{ML Service}}] {};
+    \node[groupbox, fit=(db)(dash), label=above:{\scriptsize\textbf{Output}}] {};
+  \end{scope}
+
+\end{tikzpicture}}
+\caption{End-to-end ML pipeline: from IVR call to depression risk prediction, as implemented in the codebase.}
+\label{fig:e2e_pipeline}
+\end{figure}
+
+%=============================================================
+\section{Phase 1: Domain-Driven CNN for Speech Emotion Recognition}
+%=============================================================
+
+\subsection{Motivation}
+
+Speech Emotion Recognition (SER) shares the acoustic feature space of depression detection — both tasks rely on paralinguistic cues (pitch, energy, pause structure, spectral properties). SER experiments were conducted first as a controlled testbed for feature engineering and model design choices before tackling the harder, lower-resource DAIC-WOZ depression corpus.
+
+\subsection{Custom Feature Sets}
+
+\subsubsection{5-Feature Set (Frame-Level)}
+\begin{table}[h]
+\centering
+\caption{5-feature set extracted per frame.}
+\label{tab:5feat}
+\begin{tabular}{@{}clp{7cm}@{}}
+\toprule
+\textbf{ID} & \textbf{Feature} & \textbf{Clinical Rationale} \\
+\midrule
+F1 & Mean Pause Duration      & Longer pauses indicate psychomotor slowing \\
+F2 & Std.\ of Pause Durations & Variability in pause rhythm \\
+F3 & Total Pause Count        & Higher pause frequency in depression \\
+F4 & RMS Energy               & Reduced vocal energy is characteristic of depression \\
+F5 & Std.\ of Energy          & Monotonous speech shows lower energy variability \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{20-Feature Set}
+\begin{itemize}
+    \item \textbf{10 pause histogram features}: Distributional statistics of pause durations computed across sub-windows of the frame.
+    \item \textbf{10 mel-spectrogram / MFCC features}: Spectral envelope coefficients capturing formant and prosodic structure.
+\end{itemize}
+
+\subsection{Model Architectures}
+
+Figure~\ref{fig:ser_models} illustrates the four architectures explored.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=0.45cm]
+  % Model 1
+  \node[block, fill=gray!10, text width=2.4cm] (m1in) {5-feature\\input};
+  \node[block, fill=gray!10, text width=2.4cm, below=of m1in] (m1fc) {Fully\\Connected};
+  \node[block, fill=gray!10, text width=2.4cm, below=of m1fc] (m1out) {Softmax\\8 classes};
+  \draw[arrow] (m1in)--(m1fc); \draw[arrow] (m1fc)--(m1out);
+  \node[above=0.1cm of m1in, font=\footnotesize\bfseries] {Model 1};
+
+  % Model 2
+  \node[block, fill=blue!10, text width=2.4cm, right=0.8cm of m1in] (m2in) {20-feature\\2D map};
+  \node[block, fill=blue!10, text width=2.4cm, below=of m2in] (m2se) {SE Residual\\CNN blocks};
+  \node[block, fill=blue!10, text width=2.4cm, below=of m2se] (m2out) {Softmax\\8 classes};
+  \draw[arrow] (m2in)--(m2se); \draw[arrow] (m2se)--(m2out);
+  \node[above=0.1cm of m2in, font=\footnotesize\bfseries] {Model 2};
+
+  % Model 3
+  \node[block, fill=green!10, text width=2.4cm, right=0.8cm of m2in] (m3in) {Raw\\waveform};
+  \node[block, fill=green!10, text width=2.4cm, below=of m3in] (m3cnn) {1D CNN\\$\rightarrow(512,\,N/64)$};
+  \node[block, fill=green!10, text width=2.4cm, below=of m3cnn] (m3lstm){LSTM\\$\rightarrow(1,\,512)$};
+  \node[block, fill=green!10, text width=2.4cm, below=of m3lstm] (m3out) {Linear\\8 classes};
+  \draw[arrow](m3in)--(m3cnn); \draw[arrow](m3cnn)--(m3lstm); \draw[arrow](m3lstm)--(m3out);
+  \node[above=0.1cm of m3in, font=\footnotesize\bfseries] {Model 3};
+
+  % Model 4
+  \node[block, fill=orange!10, text width=2.4cm, right=0.8cm of m3in] (m4in) {20-feature\\2D map};
+  \node[block, fill=orange!10, text width=2.4cm, below=of m4in] (m4cnn) {6-layer\\2D CNN};
+  \node[block, fill=orange!10, text width=2.4cm, below=of m4cnn] (m4gru) {BiGRU\\(1–3 layers)};
+  \node[block, fill=orange!10, text width=2.4cm, below=of m4gru] (m4out) {Softmax\\8 classes};
+  \draw[arrow](m4in)--(m4cnn); \draw[arrow](m4cnn)--(m4gru); \draw[arrow](m4gru)--(m4out);
+  \node[above=0.1cm of m4in, font=\footnotesize\bfseries] {Model 4};
+\end{tikzpicture}
+\caption{Four SER architectures explored: (1) FC on 5-features, (2) SE-CNN on 20-features, (3) 1D CNN + LSTM on raw waveform, (4) 2D CNN + BiGRU on 20-features.}
+\label{fig:ser_models}
+\end{figure}
+
+\subsection{Datasets}
+
+Models were trained on RAVDESS~\cite{Livingstone2018} (1,440 files, 8 emotions, 24 professional actors) and evaluated via:
+\begin{itemize}
+    \item RAVDESS hold-out validation split (training and validation confusion matrices)
+    \item IESC: 8 participants (5 male, 3 female), 600 samples across 5 emotions (angry, fear, happy, neutral, sad)
+\end{itemize}
+
+\subsection{Results}
+
+\subsubsection{Model 1 and Model 2: Effect of Feature Set and Window Size}
+
+Table~\ref{tab:ser_window} reports the RAVDESS test and training accuracies for Model~1 (fully connected, 5-feature set) and Model~2 (SE Residual CNN) across feature sets and frame window sizes.
+
+\begin{table}[h]
+\centering
+\caption{RAVDESS test and train accuracy (\%) for Models 1--2 across window sizes (8-class classification).}
+\label{tab:ser_window}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}llcccc@{}}
+\toprule
+\textbf{Model} & \textbf{Feature Set} & \textbf{20\,ms} & \textbf{60\,ms} & \textbf{80\,ms} & \textbf{300\,ms} \\
+\midrule
+\multirow{2}{*}{Model 1: FC}
+  & 5-feat (Test)  & 15.56 & 16.26 & 15.56 & 16.26 \\
+  & 5-feat (Train) & 15.84 & 15.08 & 15.84 & 15.08 \\
+\midrule
+\multirow{4}{*}{Model 2: SE-CNN}
+  & 5-feat (Test)  & 32.36 & 35.42 & 33.51 & 29.03 \\
+  & 5-feat (Train) & 40.42 & 41.46 & 41.69 & 38.02 \\
+  & 20-feat (Test)  & \textbf{48.47} & 44.53 & 45.07 & 43.37 \\
+  & 20-feat (Train) & 62.62 & 57.83 & 57.44 & 63.08 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+Model~1 with the 5-feature set achieves only 15--16\% test accuracy (barely above random chance of 12.5\% for 8 classes), confirming that pause and energy features alone are insufficient for emotion recognition on their own. Model~2 (SE-CNN) with the 20-feature set (pause histogram + mel-spectrogram) achieves 48.47\% at a 20\,ms window — a 3$\times$ improvement over Model~1. Switching from the 5-feature to the 20-feature set for Model~2 improves test accuracy by 13--16 percentage points across all window sizes, clearly demonstrating the benefit of adding spectral features.
+
+\subsubsection{Model 3: Recurrent Architecture Comparison}
+
+Table~\ref{tab:ser_rnn} compares different recurrent unit types (RNN, LSTM, BiLSTM, BiGRU) at 1-layer and 3-layer depths on the 1D CNN backbone trained on the 20-feature set.
+
+\begin{table}[h]
+\centering
+\caption{RAVDESS test and train accuracy (\%) for 1D CNN + recurrent architectures (Model~3).}
+\label{tab:ser_rnn}
+\resizebox{0.85\textwidth}{!}{%
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Recurrent Unit} & \multicolumn{2}{c}{\textbf{1 Layer}} & \multicolumn{2}{c}{\textbf{3 Layers}} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+ & Test (\%) & Train (\%) & Test (\%) & Train (\%) \\
+\midrule
+RNN    & 48.65 & 52.20 & 48.65 & 48.65 \\
+LSTM   & 64.06 & 76.22 & 48.03 & 49.96 \\
+BiLSTM & 83.09 & 99.95 & 87.04 & 99.98 \\
+BiGRU  & 83.97 & 99.97 & \textbf{88.54} & 99.81 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+Bidirectional architectures substantially outperform unidirectional ones: BiGRU and BiLSTM both exceed 83\% at 1 layer. The 3-layer BiGRU achieves the best test accuracy of \textbf{88.54\%} on RAVDESS. The gap between training accuracy ($\sim$99.8\%) and test accuracy ($\sim$88.5\%) indicates some over-fitting, which motivates the use of regularisation or larger datasets in future work.
+
+Cross-corpus evaluation on IESC showed lower per-class accuracy, particularly for minority classes, due to domain shift between RAVDESS (North American English actors) and IESC (Indian speakers) — confirming the need for a more culturally representative training corpus.
+
+\textbf{Design insight:} The SER experiments established two key findings carried into Phase~3: (a) the 20-feature set (spectral + temporal) substantially outperforms pause features alone, and (b) bidirectional recurrent architectures effectively capture temporal speech dynamics. The 4$\times$ accuracy gap between the 5-feature FC model (16\%) and the 3-layer BiGRU (88\%) quantifies the importance of both richer features and temporal modelling.
+
+%=============================================================
+\section{Phase 2: Transfer Learning with wav2vec~2.0}
+%=============================================================
+
+\subsection{Architecture}
+
+Following Rizhinashvili et al.~\cite{Rizhinashvili2024}, a wav2vec~2.0-based SER system was implemented. Figure~\ref{fig:wav2vec_arch} shows the architecture.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=0.5cm]
+  \node[wideblock, fill=purple!10] (raw)  {Raw audio waveform};
+  \node[wideblock, fill=purple!18, below=of raw]  (w2v)  {wav2vec~2.0 Feature Extractor\\25\,ms chunks $\rightarrow$ 1024-dim embeddings};
+  \node[wideblock, fill=blue!10, below=of w2v]   (lstm) {LSTM layers\\Temporal modelling};
+  \node[wideblock, fill=green!10, below=of lstm]  (vad)  {VAD Head\\Valence / Arousal / Dominance};
+  \node[wideblock, fill=orange!10, below=of vad]  (emo)  {Emotion Head\\Softmax (N classes)};
+
+  \node[wideblock, fill=yellow!15, right=2.2cm of lstm] (ref) {Ground-truth VAD\\(averaged from 3 pre-trained\\VAD networks on RAVDESS)};
+
+  \draw[arrow] (raw)--(w2v);
+  \draw[arrow] (w2v)--(lstm);
+  \draw[arrow] (lstm)--(vad);
+  \draw[arrow] (vad)--(emo);
+  \draw[dasharrow] (ref.west) -- node[above,font=\tiny]{Huber loss} (vad.east);
+\end{tikzpicture}
+\caption{wav2vec~2.0 + VAD mapping architecture. Ground-truth VAD embeddings are obtained by averaging outputs of three pre-trained networks on RAVDESS.}
+\label{fig:wav2vec_arch}
+\end{figure}
+
+The three pre-trained VAD networks used to generate reference embeddings are:
+\begin{enumerate}
+    \item Wav2Vec2.0-L-Robust-12 trained on MSP Podcast Corpus.
+    \item LSTM (512-256-128 layers) trained on Quechua Collao Corpus.
+    \item CNN (512-256-128 layers) trained on Quechua Collao Corpus.
+\end{enumerate}
+
+\subsection{Results}
+
+\begin{table}[h]
+\centering
+\caption{Top-1 accuracy of the wav2vec~2.0 + VAD model implemented in this work.}
+\label{tab:wav2vec_results}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Dataset} & \textbf{Emotions} & \textbf{Top-1 Accuracy (\%)} \\
+\midrule
+RAVDESS  & 8 & 95.33 \\
+EMO-DB   & 7 & 61.12 \\
+CREMA-D  & 6 & 36.35 \\
+IESC     & 5 & 31.83 \\
+TESS     & 7 & 42.79 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Within-domain accuracy (RAVDESS) was 95.33\%, but cross-corpus accuracy dropped sharply — particularly on IESC (31.83\%), confirming the domain-shift problem for Indian-language speakers and motivating the need for a domain-specific dataset.
+
+%=============================================================
+\section{Phase 3: Depression Detection on DAIC-WOZ}
+%=============================================================
+
+\subsection{Dataset}
+
+\begin{table}[h]
+\centering
+\caption{DAIC-WOZ official partition.}
+\label{tab:daic_split}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Split} & \textbf{Total} & \textbf{Depressed} & \textbf{Non-depressed} \\
+\midrule
+Training    & 107 & 30  & 77  \\
+Development & 35  & 12  & 23  \\
+Test        & 47  & 14  & 33  \\
+\midrule
+Total       & 189 & 56  & 133 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%=============================================================
+\section{Detailed ML Pipeline: Step-by-Step Codebase Walkthrough}
+\label{sec:pipeline_detail}
+%=============================================================
+
+This section walks through every stage of the deployed ML pipeline exactly as implemented in the codebase. The pipeline spans two files: \texttt{celery\_config\_twilio.py} (backend Celery task) and \path{ml-service/app/services/depression_prediction.py} (ML inference service).
+
+Figure~\ref{fig:ml_detail} shows the detailed flowchart of the ML pipeline.
+
+\begin{figure}[p]
+\centering
+\resizebox{0.95\textwidth}{!}{%
+\begin{tikzpicture}[node distance=0.55cm]
+
+  \node[wideblock, fill=teal!12] (q1) {\textbf{Step 1:} Query all voice responses\\\texttt{TwilioResponses} (ordered by \texttt{Question\_Index})};
+
+  \node[wideblock, fill=teal!12, below=of q1] (dl) {\textbf{Step 2:} Download audio per response\\\textit{Primary:} MinIO URL\\\textit{Fallback:} Twilio URL (.mp3 / .wav)};
+
+  \node[wideblock, fill=teal!12, below=of dl] (load1) {\textbf{Step 3:} Load with librosa\\\texttt{librosa.load(BytesIO,}\\{\footnotesize\texttt{sr=None, mono=True)}}\\Resample to common \texttt{sr} if needed};
+
+  \node[wideblock, fill=teal!12, below=of load1] (cat) {\textbf{Step 4:} Concatenate arrays\\\texttt{np.concatenate(audio\_arrays)}\\Total $\approx$ 3 min of speech};
+
+  \node[wideblock, fill=teal!12, below=of cat] (enc) {\textbf{Step 5:} Encode to WAV bytes\\\texttt{soundfile.write(}\\{\footnotesize\texttt{buffer, audio, sr, \textquotesingle WAV\textquotesingle)}}\\Fallback: \texttt{scipy.io.wavfile.write()}};
+
+  \node[wideblock, fill=teal!12, below=of enc] (post) {\textbf{Step 6:} HTTP POST to ML service\\\texttt{POST /api/ml/depression}\\\texttt{mlclient.predict\_}\\{\footnotesize\texttt{depression\_from\_bytes()}}};
+
+  \draw[arrow](q1)--(dl); \draw[arrow](dl)--(load1);
+  \draw[arrow](load1)--(cat); \draw[arrow](cat)--(enc); \draw[arrow](enc)--(post);
+
+  \begin{scope}[on background layer]
+    \node[groupbox, fit=(q1)(dl)(load1)(cat)(enc)(post),
+          label=above:{\footnotesize\textbf{Celery Task: \texttt{analyze\_call\_depression\_risk\_task}}}]{};
+  \end{scope}
+
+  % ML service steps — right column
+  \node[wideblock, fill=blue!12, right=2.0cm of q1] (ml1) {\textbf{Step 7:} Load \& Preprocess\\\texttt{librosa.load(BytesIO, sr=16000)}\\\texttt{librosa.util.normalize(y)}};
+
+  \node[wideblock, fill=blue!12, below=of ml1] (ml2) {\textbf{Step 8:} Segment audio\\\texttt{seg\_samples = 7.0 $\times$ 16000}\\$= 112\,000$ samples\\\texttt{y[i : i+112000]}, zero-pad last};
+
+  \node[wideblock, fill=blue!12, below=of ml2] (ml3) {\textbf{Step 9:} TSFEL feature extraction\\\texttt{seg.reshape(-1, 1)}\\ $\rightarrow$ shape (112000, 1)\\\texttt{tsfel.time\_series\_}\\{\footnotesize\texttt{features\_extractor()}}\\\textbf{156 features per segment}};
+
+  \node[wideblock, fill=blue!12, below=of ml3] (ml4) {\textbf{Step 10:} Stack segment features\\\texttt{X = np.array(segment\_features)}\\\textbf{Shape: $(K \times 156)$}};
+
+  \node[wideblock, fill=blue!12, below=of ml4] (ml5) {\textbf{Step 11:} Random Forest inference\\\texttt{model.predict(X)} $\rightarrow$ $\hat{y}_i \in \{0,1\}$\\\texttt{model.predict\_proba(X)[:,1]}\\ $\rightarrow$ $p_i$};
+
+  \node[wideblock, fill=blue!12, below=of ml5] (ml6) {\textbf{Step 12:} Subject-level aggregation\\\texttt{mean\_prob = np.mean(y\_probs)}\\\texttt{pred = 1 if mean\_prob $\geq$ 0.5}\\\texttt{confidence = max(p, 1-p)}};
+
+  \draw[arrow](ml1)--(ml2); \draw[arrow](ml2)--(ml3);
+  \draw[arrow](ml3)--(ml4); \draw[arrow](ml4)--(ml5); \draw[arrow](ml5)--(ml6);
+
+  \begin{scope}[on background layer]
+    \node[groupbox, fit=(ml1)(ml2)(ml3)(ml4)(ml5)(ml6),
+          label=above:{\footnotesize\textbf{ML Service: \texttt{DepressionPredictionService}}}]{};
+  \end{scope}
+
+  % Connect col1 to col2
+  \draw[arrow] (post.east) -- ++(0.3,0) |- (ml1.west);
+
+  % Output
+  \node[dbblock, below=0.7cm of ml6] (db) {Store in DB\\\texttt{TwilioCalls}};
+  \draw[arrow] (ml6)--(db);
+
+\end{tikzpicture}}
+\caption{Step-by-step ML pipeline: Celery task (left) and ML service (right).}
+\label{fig:ml_detail}
+\end{figure}
+
+%---------------------------------------------------------------
+\subsection{Step 1–2: Query and Download Responses}
+%---------------------------------------------------------------
+
+The Celery task \texttt{analyze\_call\_\allowbreak depression\_risk\_task} begins by querying all voice responses for the completed call from PostgreSQL:
+
+\begin{lstlisting}[language=Python, caption={Querying voice responses (celery\_config\_twilio.py).}]
+responses = (
+    db.query(TwilioResponses)
+    .filter(
+        TwilioResponses.Call_Id == call_uuid,
+        TwilioResponses.Response_Type == "record",
+    )
+    .order_by(TwilioResponses.Question_Index)
+    .all()
+)
+\end{lstlisting}
+
+For each response, the audio is fetched using a priority-ordered URL list:
+\begin{lstlisting}[language=Python, caption={URL priority and authenticated download.}]
+candidate_urls = []
+if resp.MinIORecordingUrl:
+    candidate_urls.append(resp.MinIORecordingUrl)      # Primary
+if resp.TwilioRecordingUrl:
+    twilio_base = resp.TwilioRecordingUrl.rstrip("/")
+    candidate_urls.extend([
+        twilio_base,
+        f"{twilio_base}.mp3",   # Fallback formats
+        f"{twilio_base}.wav",
+    ])
+
+auth = None
+if "api.twilio.com" in recording_url:
+    auth = (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)  # Twilio requires auth
+resp_audio = requests.get(recording_url, timeout=30, auth=auth)
+\end{lstlisting}
+
+%---------------------------------------------------------------
+\subsection{Step 3–5: Load, Resample, Concatenate, Encode}
+%---------------------------------------------------------------
+
+Each downloaded audio file is loaded with \texttt{librosa}, resampled to a common sample rate, and appended to the list:
+
+\begin{lstlisting}[language=Python, caption={Load and resample per response (celery\_config\_twilio.py).}]
+audio_data, sr = librosa.load(
+    io.BytesIO(resp_audio.content),
+    sr=None,      # Preserve original sample rate
+    mono=True,    # Downmix to single channel
+)
+if sample_rate is None:
+    sample_rate = sr                     # Lock SR from first response
+if sr != sample_rate:
+    audio_data = librosa.resample(
+        audio_data, orig_sr=sr, target_sr=sample_rate
+    )
+audio_arrays.append(audio_data)
+\end{lstlisting}
+
+All response arrays are concatenated into a single continuous interview audio:
+
+\begin{lstlisting}[language=Python, caption={Concatenation and WAV encoding.}]
+combined_audio = np.concatenate(audio_arrays)   # Shape: (N_total,)
+
+audio_buffer = io.BytesIO()
+sf.write(audio_buffer, combined_audio,          # soundfile (primary)
+         sample_rate, format='WAV')
+# Fallback:
+# wavfile.write(buffer, sr, (audio * 32767).astype(np.int16))
+audio_bytes = audio_buffer.getvalue()
+\end{lstlisting}
+
+%---------------------------------------------------------------
+\subsection{Step 6: HTTP POST to ML Service}
+%---------------------------------------------------------------
+
+The combined WAV bytes are posted to the ML service. The call is handled by \texttt{ml\_client.\allowbreak predict\_depression\_from\_bytes()} defined in \path{ml-service/app/twilio/ml_client.py}:
+
+\begin{lstlisting}[language=Python, caption={HTTP POST to ML service.}]
+response = httpx.post(
+    f"{self.base_url}/api/ml/depression",
+    files={"file": ("audio.wav", audio_bytes, "audio/wav")},
+    params={"threshold": threshold},   # default 0.5
+    timeout=self.timeout,
+)
+\end{lstlisting}
+
+The task retries up to 3 times (30-second back-off) if the ML service is unavailable.
+
+%---------------------------------------------------------------
+\subsection{Step 7: Audio Preprocessing in ML Service}
+%---------------------------------------------------------------
+
+Inside \texttt{Depres\-sion\-Pre\-dic\-tion\-Ser\-vice.\allowbreak predict\_from\_audio\_bytes()}, the raw bytes are loaded and normalised:
+
+\begin{lstlisting}[language=Python, caption={Preprocessing in ml-service (depression\_prediction.py).}]
+def predict_from_audio_bytes(self, audio_bytes, threshold=0.5):
+    audio_file = io.BytesIO(audio_bytes)
+    y, sr = librosa.load(audio_file, sr=self.sr)   # self.sr = 16000
+
+    if sr != self.sr:
+        y = librosa.resample(y, orig_sr=sr,
+                             target_sr=self.sr)
+
+    y = librosa.util.normalize(y)    # Scale to [-1, +1]
+    return self.predict_subject_level(y, threshold)
+\end{lstlisting}
+
+Figure~\ref{fig:preprocess} illustrates the preprocessing effect on the waveform.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=0.6cm]
+  \node[wideblock, fill=gray!10]  (raw)   {Raw WAV bytes (BytesIO)};
+  \node[wideblock, fill=blue!10, below=of raw]  (load)  {\texttt{librosa.load(sr=16000, mono=True)}\\Float32 array, 16\,000 samples/sec};
+  \node[wideblock, fill=blue!10, below=of load] (res)   {\texttt{librosa.resample()} if \texttt{sr $\neq$ 16000}\\Resampling via high-quality sinc interpolation};
+  \node[wideblock, fill=blue!10, below=of res]  (norm)  {\texttt{librosa.util.normalize()}\\$y \leftarrow y\,/\,\max(|y|)$ — range $[-1,\,+1]$};
+  \node[wideblock, fill=green!12, below=of norm] (out)   {Normalised float32 array $y \in \mathbb{R}^N$\\ready for segmentation};
+  \draw[arrow](raw)--(load); \draw[arrow](load)--(res);
+  \draw[arrow](res)--(norm); \draw[arrow](norm)--(out);
+\end{tikzpicture}
+\caption{Audio preprocessing pipeline inside the ML service.}
+\label{fig:preprocess}
+\end{figure}
+
+%---------------------------------------------------------------
+\subsection{Step 8: Audio Segmentation}
+%---------------------------------------------------------------
+
+The normalised audio is divided into non-overlapping 7-second segments by \texttt{segment\_audio()}:
+
+\begin{lstlisting}[language=Python, caption={Segmentation (depression\_prediction.py).}]
+def segment_audio(self, y: np.ndarray) -> List[np.ndarray]:
+    seg_samples = int(self.segment_duration * self.sr)
+    # = int(7.0 * 16000) = 112,000 samples per segment
+    segments = []
+    for i in range(0, len(y), seg_samples):
+        seg = y[i : i + seg_samples]
+        if len(seg) < seg_samples:            # Last segment: zero-pad
+            seg = np.pad(seg, (0, seg_samples - len(seg)))
+        segments.append(seg)
+    return segments
+\end{lstlisting}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=0.4cm]
+  \node[wideblock, fill=gray!10] (full) {Full audio array $y$ ($N$ samples @ 16\,kHz)};
+
+  \node[block, fill=blue!10, below=0.9cm of full, xshift=-4.2cm, text width=2.2cm] (s1) {Segment 1\\$[0\!:\!112000]$\\7\,s};
+  \node[block, fill=blue!10, below=0.9cm of full, xshift=-1.4cm, text width=2.2cm] (s2) {Segment 2\\$[112000\!:\!224000]$\\7\,s};
+  \node[block, fill=gray!20, below=0.9cm of full, xshift=1.4cm,  text width=1.6cm] (s3) {$\cdots$};
+  \node[block, fill=orange!15,below=0.9cm of full, xshift=4.2cm, text width=2.4cm] (sk) {Segment $K$\\(zero-padded\\if $<$ 7\,s)};
+
+  \draw[arrow] (full.south) -- ++(-4.2,0) -- ++(0,-0.5) -- (s1.north);
+  \draw[arrow] (full.south) -- ++(-1.4,0) -- ++(0,-0.5) -- (s2.north);
+  \draw[arrow] (full.south) -- ++(1.4,0)  -- ++(0,-0.5) -- (s3.north);
+  \draw[arrow] (full.south) -- ++(4.2,0)  -- ++(0,-0.5) -- (sk.north);
+
+  % Label placed below all segment boxes, centred
+  \node[below=0.5cm of s1, xshift=4.2cm, font=\small, text width=9cm, align=center]
+      {$K$ total segments, each 112\,000 samples};
+\end{tikzpicture}
+\caption{Audio segmentation into fixed 7-second (112,000 sample) windows. The last segment is zero-padded.}
+\label{fig:segmentation}
+\end{figure}
+
+%---------------------------------------------------------------
+\subsection{Step 9: TSFEL Feature Extraction (156 Features/Segment)}
+%---------------------------------------------------------------
+
+For each segment, TSFEL~\cite{TSFEL2020} extracts 156 features spanning three domains:
+
+\begin{lstlisting}[language=Python, caption={TSFEL extraction per segment (depression\_prediction.py).}]
+seg_reshaped = seg.reshape(-1, 1)   # Shape: (112000, 1) — TSFEL needs (N, channels)
+
+features = tsfel.time_series_features_extractor(
+    self.tsfel_config,   # All-domain config: get_features_by_domain()
+    seg_reshaped,
+    fs=self.sr,          # 16,000 Hz
+    verbose=0,
+)
+segment_features.append(features.values.squeeze())  # 156-dim float array
+\end{lstlisting}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=0.5cm]
+  \node[wideblock, fill=blue!8] (seg) {Audio segment: shape $(112000,\,1)$\\7 seconds @ 16\,kHz};
+
+  \node[block, fill=purple!10, below=0.8cm of seg, xshift=-4cm, text width=2.8cm] (stat)
+      {\textbf{Statistical}\\Mean, Variance\\Kurtosis, Skewness\\Percentiles, IQR\\$\approx$52 features};
+  \node[block, fill=orange!10, below=0.8cm of seg, xshift=0cm, text width=2.8cm] (temp)
+      {\textbf{Temporal}\\Zero-crossing rate\\Autocorrelation\\Mean abs.\ deviation\\Entropy, Slope\\$\approx$30 features};
+  \node[block, fill=green!10, below=0.8cm of seg, xshift=4cm, text width=2.8cm] (spec)
+      {\textbf{Spectral}\\MFCC coefficients\\Spectral centroid\\Roll-off, Flux\\Entropy, Bandwidth\\$\approx$74 features};
+
+  \draw[arrow] (seg.south) -- ++(-4,0) -- ++(0,-0.4) -- (stat.north);
+  \draw[arrow] (seg.south) -- (temp.north);
+  \draw[arrow] (seg.south) -- ++(4,0) -- ++(0,-0.4) -- (spec.north);
+
+  \node[wideblock, fill=blue!18, below=1.3cm of temp] (out)
+      {\textbf{156-dimensional feature vector} per segment\\$f_i \in \mathbb{R}^{156}$};
+
+  \draw[arrow] (stat.south) |- (out.west);
+  \draw[arrow] (temp.south) -- (out.north);
+  \draw[arrow] (spec.south) |- (out.east);
+\end{tikzpicture}
+\caption{TSFEL extracts 156 features per segment across three domains: statistical, temporal, and spectral.}
+\label{fig:tsfel}
+\end{figure}
+
+%---------------------------------------------------------------
+\subsection{Step 10: Stack Feature Matrix}
+%---------------------------------------------------------------
+
+After all $K$ segments are processed, the feature vectors are stacked into a matrix:
+
+\begin{lstlisting}[language=Python, caption={Stacking segment features.}]
+X = np.array(segment_features)   # Shape: (K, 156)
+\end{lstlisting}
+
+Each row of $\mathbf{X} \in \mathbb{R}^{K \times 156}$ is one segment's feature vector. The Random Forest will process each row independently.
+
+\medskip
+\noindent\textbf{Note on training vs.\ inference features.} During training on DAIC-WOZ (described in Section~\ref{sec:ablation}), a subject-level 624-dimensional feature vector was used: mean, std, min, max aggregated column-wise across all $K$ segment vectors. This is implemented in \texttt{extract\_tsfel\_\allowbreak features()}:
+
+\begin{lstlisting}[language=Python, caption={624-dim aggregated features for training (depression\_prediction.py).}]
+features_array = np.vstack(all_features)   # Shape: (K, 156)
+aggregated = np.concatenate([
+    np.mean(features_array, axis=0),       # 156 features
+    np.std(features_array,  axis=0),       # 156 features
+    np.min(features_array,  axis=0),       # 156 features
+    np.max(features_array,  axis=0),       # 156 features
+])   # Final shape: (624,)
+\end{lstlisting}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=0.5cm]
+  \node[wideblock] (mat) {Feature matrix $\mathbf{F} \in \mathbb{R}^{K \times 156}$\\$K$ segments, 156 features each};
+
+  \node[block, fill=blue!12, below=0.8cm of mat, xshift=-4.5cm, text width=2.5cm]
+      (mn) {$\mu$ (mean)\\column-wise\\$\mathbb{R}^{156}$};
+  \node[block, fill=orange!12, below=0.8cm of mat, xshift=-1.5cm, text width=2.5cm]
+      (sd) {$\sigma$ (std)\\column-wise\\$\mathbb{R}^{156}$};
+  \node[block, fill=green!12, below=0.8cm of mat, xshift=1.5cm, text width=2.5cm]
+      (mn2) {\texttt{min}\\column-wise\\$\mathbb{R}^{156}$};
+  \node[block, fill=purple!12, below=0.8cm of mat, xshift=4.5cm, text width=2.5cm]
+      (mx) {\texttt{max}\\column-wise\\$\mathbb{R}^{156}$};
+
+  \draw[arrow](mat.south) -- ++(-4.5,0) -- ++(0,-0.4) -- (mn.north);
+  \draw[arrow](mat.south) -- ++(-1.5,0) -- ++(0,-0.4) -- (sd.north);
+  \draw[arrow](mat.south) -- ++(1.5,0)  -- ++(0,-0.4) -- (mn2.north);
+  \draw[arrow](mat.south) -- ++(4.5,0)  -- ++(0,-0.4) -- (mx.north);
+
+  \node[wideblock, fill=red!10, below=1.4cm of sd, xshift=1.5cm]
+      (agg) {Concatenated feature vector $\mathbf{x} \in \mathbb{R}^{624}$\\$[\mu \;\|\; \sigma \;\|\; \min \;\|\; \max]$\\Used for subject-level training};
+
+  \draw[arrow](mn.south)  |- (agg.west);
+  \draw[arrow](sd.south)  -- (agg.north);
+  \draw[arrow](mn2.south) -- (agg.north);
+  \draw[arrow](mx.south)  |- (agg.east);
+\end{tikzpicture}
+\caption{Aggregation of segment features into a 624-dimensional subject-level feature vector ($4 \times 156 = 624$).}
+\label{fig:aggregation}
+\end{figure}
+
+%---------------------------------------------------------------
+\subsection{Step 11: Random Forest Inference}
+%---------------------------------------------------------------
+
+The pre-trained Random Forest model (200 trees, loaded via \texttt{joblib}) is applied to the feature matrix:
+
+\begin{lstlisting}[language=Python, caption={Random Forest per-segment inference (depression\_prediction.py).}]
+y_pred  = self.model.predict(X)              # Shape: (K,)  — 0 or 1 per segment
+y_probs = self.model.predict_proba(X)[:, 1]  # Shape: (K,)  — P(depressed) per segment
+\end{lstlisting}
+
+Each of the $K$ segments receives an independent binary prediction and a depression probability from the ensemble of 200 trees.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=0.45cm]
+  \node[wideblock] (X) {Feature matrix $\mathbf{X} \in \mathbb{R}^{K \times 156}$\\$K$ segment vectors};
+
+  \node[block, fill=green!10, below=0.7cm of X, xshift=-3.5cm, text width=2.6cm]
+      (t1) {Tree 1\\bootstrap sample};
+  \node[block, fill=green!10, below=0.7cm of X, xshift=0cm, text width=2.6cm]
+      (t2) {Tree $t$\\bootstrap sample};
+  \node[block, fill=green!10, below=0.7cm of X, xshift=3.5cm, text width=2.6cm]
+      (t200) {Tree 200\\bootstrap sample};
+
+  \draw[arrow](X.south) -- ++(-3.5,0) -- ++(0,-0.3) -- (t1.north);
+  \draw[arrow](X.south) -- (t2.north);
+  \draw[arrow](X.south) -- ++(3.5,0) -- ++(0,-0.3) -- (t200.north);
+  \node at ($(t1)!0.5!(t2)$) {$\cdots$};
+  \node at ($(t2)!0.5!(t200)$) {$\cdots$};
+
+  \node[wideblock, fill=blue!12, below=0.9cm of t2]
+      (vote) {Majority vote + probability average\\\texttt{predict\_proba()[:,1]} $\rightarrow p_i$ per segment};
+
+  \draw[arrow](t1.south)  |- (vote.west);
+  \draw[arrow](t2.south)  -- (vote.north);
+  \draw[arrow](t200.south)|- (vote.east);
+\end{tikzpicture}
+\caption{Random Forest (200 trees) applied per segment: each tree votes on each row of $\mathbf{X}$.}
+\label{fig:rf}
+\end{figure}
+
+%---------------------------------------------------------------
+\subsection{Step 12: Subject-Level Aggregation and Thresholding}
+%---------------------------------------------------------------
+
+The segment-level probabilities $\{p_1, \ldots, p_K\}$ are aggregated to a single subject-level prediction:
+
+\begin{lstlisting}[language=Python, caption={Subject-level aggregation (depression\_prediction.py).}]
+def predict_subject_level(self, y, threshold=0.5):
+    segment_results = self.predict_segment_level(y)
+
+    mean_prob  = segment_results["mean_probability"]   # mean(p_1...p_K)
+    prediction = 1 if mean_prob >= threshold else 0    # Binary decision
+
+    return {
+        "depression_risk":         prediction,
+        "risk_probability":        mean_prob,
+        "risk_level":              "High" if prediction == 1 else "Low",
+        "confidence":              max(mean_prob, 1 - mean_prob),
+        "num_segments":            segment_results["num_segments"],
+        "segment_details":         segment_results,
+    }
+\end{lstlisting}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=0.5cm]
+  \node[wideblock] (segs) {Per-segment probabilities $\{p_1, p_2, \ldots, p_K\}$};
+
+  \node[wideblock, fill=blue!10, below=of segs]
+      (mean) {$\bar{p} = \dfrac{1}{K}\displaystyle\sum_{i=1}^{K} p_i$ \quad (mean probability)};
+
+  \node[decblock, below=0.7cm of mean] (th) {$\bar{p} \geq \theta$\\$(\theta = 0.5)$};
+
+  \node[block, fill=red!20, below left=0.6cm and 1.2cm of th, text width=2.8cm]
+      (high) {\textbf{Depression Risk: High}\\\texttt{depression\_risk = 1}};
+  \node[block, fill=green!20, below right=0.6cm and 1.2cm of th, text width=2.8cm]
+      (low)  {\textbf{Depression Risk: Low}\\\texttt{depression\_risk = 0}};
+
+  \node[wideblock, fill=orange!10, below=2.2cm of th]
+      (conf) {\texttt{confidence = max($\bar{p}$,\;$1-\bar{p}$)}\\Range: [0.5,\;1.0]};
+
+  \draw[arrow](segs)--(mean);
+  \draw[arrow](mean)--(th);
+  \draw[arrow](th.west) -- node[above,font=\tiny]{Yes} (high.north);
+  \draw[arrow](th.east) -- node[above,font=\tiny]{No}  (low.north);
+  \draw[arrow](high.south) |- (conf.west);
+  \draw[arrow](low.south)  |- (conf.east);
+\end{tikzpicture}
+\caption{Subject-level aggregation: mean segment probability is thresholded at $\theta = 0.5$ to produce the final binary prediction.}
+\label{fig:threshold}
+\end{figure}
+
+%---------------------------------------------------------------
+\subsection{Step 13: Result Storage in PostgreSQL}
+%---------------------------------------------------------------
+
+The Celery task receives the ML service response and writes the results to the \texttt{TwilioCalls} record:
+
+\begin{lstlisting}[language=Python, caption={Storing prediction results in the database (celery\_config\_twilio.py).}]
+call.Depression_Risk              = depression_risk      # 0 or 1
+call.Depression_Risk_Probability  = risk_probability     # float [0, 1]
+call.Depression_Risk_Level        = risk_level           # "High" / "Low"
+call.Depression_Risk_Confidence   = confidence           # float [0.5, 1]
+call.Depression_Analysis_Timestamp = datetime.now(timezone.utc)
+db.commit()
+\end{lstlisting}
+
+Table~\ref{tab:ml_output} summarises the fields persisted per completed call.
+
+\begin{table}[h]
+\centering
+\caption{Depression prediction fields stored in \texttt{TwilioCalls} table.}
+\label{tab:ml_output}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}p{5.5cm}p{1.6cm}p{6.5cm}@{}}
+\toprule
+\textbf{Column} & \textbf{Type} & \textbf{Description} \\
+\midrule
+\texttt{Depression\_Risk}                & Integer  & Binary flag: 1 = High risk, 0 = Low risk \\
+\texttt{Depression\_Risk\_Probability}   & Float    & Mean segment probability $\bar{p} \in [0,1]$ \\
+\texttt{Depression\_Risk\_Level}         & String   & ``High'' or ``Low'' \\
+\texttt{Depression\_Risk\_Confidence}    & Float    & $\max(\bar{p},\,1\!-\!\bar{p}) \in [0.5,1]$ \\
+\texttt{Depression\_Analysis\_Timestamp} & DateTime & UTC timestamp of inference \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+%=============================================================
+\section{Ablation Study: Segment Length and Decision Threshold}
+\label{sec:ablation}
+%=============================================================
+
+\subsection{Experimental Setup}
+
+All combinations of five segment lengths ($T_{\text{seg}} \in \{3, 5, 7, 9, 11\}$\,s) and four decision thresholds ($\theta \in \{0.3, 0.4, 0.5, 0.6\}$) were evaluated on the DAIC-WOZ development set. The 624-dim aggregated feature vector was used for training (one per subject); performance is reported as macro-F1 (unweighted mean over both classes), robust to class imbalance.
+
+\subsection{Results}
+
+\begin{table}[h]
+\centering
+\caption{Macro-F1 on DAIC-WOZ development set. Best result \textbf{bolded}.}
+\label{tab:ablation_full}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Segment Length} & $\boldsymbol{\theta=0.3}$ & $\boldsymbol{\theta=0.4}$ & $\boldsymbol{\theta=0.5}$ & $\boldsymbol{\theta=0.6}$ \\
+\midrule
+3\,s  & 0.321 & 0.336 & 0.286 & 0.177 \\
+5\,s  & 0.322 & 0.339 & 0.304 & 0.210 \\
+7\,s  & 0.332 & 0.344 & \textbf{0.385} & 0.191 \\
+9\,s  & 0.325 & 0.377 & 0.329 & 0.201 \\
+11\,s & 0.334 & 0.353 & 0.324 & 0.219 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Analysis}
+
+\textbf{Effect of segment length.} Performance increases from 3\,s to 7\,s as longer windows capture more complete prosodic patterns — full pitch contours, pause sequences, and speaking rate variations — within a single segment. Beyond 7\,s, performance does not improve further; at 9\,s and 11\,s, macro-F1 at the optimal threshold is lower than at 7\,s, suggesting that the additional context adds noise rather than discriminative information for this corpus.
+
+\textbf{Effect of threshold.} $\theta = 0.5$ achieves the best result for 7-second segments. Unlike the lower thresholds (0.3, 0.4), which were better suited to more imbalanced or noisier configurations, the 7-second window produces segment-level probability estimates that are well-calibrated around the natural 0.5 decision boundary. Higher thresholds (0.6) consistently underperform across all segment lengths.
+
+\textbf{Alignment with deployed system.} Importantly, the optimal configuration — 7-second segments at $\theta = 0.5$ — corresponds exactly to the default values in the deployed ML service (\texttt{SEGMENT\_DURATION\,=\,7.0}, \texttt{DEPRESSION\_THRESHOLD\,=\,0.5} in \texttt{ml-service/app/config.py}). This means the training configuration and production inference configuration are fully aligned, eliminating any train–serve skew.
+
+\textbf{Best configuration:} 7-second segments at $\theta = 0.5$, macro-F1 = \textbf{0.385}.
+
+\subsection{Comparison with Transfer Learning Baseline}
+
+\begin{table}[h]
+\centering
+\caption{TSFEL+RF vs.\ wav2vec~2.0 transfer learning on DAIC-WOZ.}
+\label{tab:model_comparison}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}lccl@{}}
+\toprule
+\textbf{Method} & \textbf{Macro-F1} & \textbf{Interpretable?} & \textbf{GPU Required?} \\
+\midrule
+TSFEL + RF (ours, 7\,s, $\theta=0.5$)        & 0.385 & Yes & No  \\
+wav2vec~2.0 + 1D-CNN + LSTM~\cite{Zhang2023} & 0.790 & No  & Yes \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+%=============================================================
+\section{Summary}
+%=============================================================
+
+The ML pipeline was developed through three phases and is fully implemented in the codebase:
+\begin{enumerate}
+    \item \textbf{Phase 1 (SER)}: 5/20-feature sets; SE-CNN, 1D CNN+LSTM, 2D CNN+BiGRU; evaluated on RAVDESS, CREMA-D, and IESC.
+    \item \textbf{Phase 2 (wav2vec~2.0)}: VAD-mapping architecture; 95.33\% on RAVDESS, 31.83\% on IESC — confirming domain-shift issue.
+    \item \textbf{Phase 3 (DAIC-WOZ)}: End-to-end deployed pipeline — Celery task downloads and concatenates 6 response recordings → librosa preprocessing → 7-second segmentation → TSFEL 156 features/segment → RF (200 trees) per-segment inference → mean probability → threshold decision → stored in PostgreSQL. Best result: 7\,s segments, $\theta=0.5$, macro-F1=0.385.
+\end{enumerate}

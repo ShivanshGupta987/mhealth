@@ -409,7 +409,7 @@ export default function TwilioCallManagementPage() {
   return (
     <Box sx={{ p: { xs: 1, md: 2 } }}>
       <PageHeader
-        title="Twilio Call Management"
+        title="Call Management"
         subtitle="Schedule calls to call recipients, view call history, analyze recordings, and track depressed recipients."
       />
 

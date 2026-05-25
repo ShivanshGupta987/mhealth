@@ -1,0 +1,17 @@
+{
+    "files.exclude": {
+        "**/.git": true,
+        "**/.svn": true,
+        "**/.hg": true,
+        "**/.DS_Store": true,
+        "**/Thumbs.db": true,
+        "**/.classpath": true,
+        "**/.project": true,
+        "**/.settings": true,
+        "**/.factorypath": true,
+        "**/d:\\iitgn_study\\thesis\\mhealth\\thesis_writing\\shivansh_thesis\\main.aux": true,
+        "**/d:\\iitgn_study\\thesis\\mhealth\\thesis_writing\\shivansh_thesis\\main.log": true,
+        "**/d:\\iitgn_study\\thesis\\mhealth\\thesis_writing\\shivansh_thesis\\main.gz": true,
+        "**/d:\\iitgn_study\\thesis\\mhealth\\thesis_writing\\shivansh_thesis\\main.out": true
+    }
+}
